@@ -30,7 +30,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static, TextArea, Tree
 from textual.widgets.tree import TreeNode
 
-from strix.agents.StrixAgent import StrixAgent
+from strix.agents.VaultAgent import VaultAgent
 from strix.llm.config import LLMConfig
 from strix.telemetry.tracer import Tracer, set_global_tracer
 
@@ -44,6 +44,128 @@ def get_package_version() -> str:
         return pkg_version("strix-agent")
     except PackageNotFoundError:
         return "dev"
+
+
+VAULTSEC_COMMAND_REFERENCE = """┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🛡️  OPERATION CONTROL                                                        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  pause                - Pause operations and switch to MANUAL mode
+  resume               - Resume operations in HYBRID mode
+  switch               - Switch operation mode (autonomous/hybrid/manual)
+  verbose              - Toggle verbose reasoning output
+  stealth              - Enable stealth mode for evasion
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🚨 EMERGENCY CONTROLS                                                        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  stop                 - Emergency stop all operations
+  ghost                - Activate ghost mode (max stealth)
+  burn                 - Burn operation (remove all traces)
+  freeze               - Freeze all active operations
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🔍 RECONNAISSANCE & SCANNING                                                 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  scan <target>        - Network scan (ports, services, OS detection)
+  enumerate <target>   - Service enumeration and fingerprinting
+  check_vulns <target> - Vulnerability assessment
+  web_scan <url>       - Web application scanner
+  scan_s3              - Scan for open S3 buckets
+  check_bucket <name>  - Check specific S3 bucket security
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 💥 EXPLOITATION                                                              ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  exploit <target>     - Execute exploit against target
+  test_sqli <url>      - Test for SQL injection vulnerabilities
+  test_api <url>       - API security testing
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 👑 ACTIVE DIRECTORY ATTACKS                                                  ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  kerberoast           - Kerberoasting attack
+  asrep_roast          - AS-REP roasting attack
+  dump_creds           - Dump credentials from memory
+  pth <hash>           - Pass-the-hash attack
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🔄 LATERAL MOVEMENT                                                          ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  wmi_exec <cmd>       - Execute command via WMI
+  psexec <cmd>         - Execute command via PsExec
+  pivot <target>       - Establish pivot to new network segment
+  start_socks          - Start SOCKS proxy for pivoting
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 📡 COMMAND & CONTROL                                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  start_listener       - Start C2 listener
+  deploy_beacon        - Deploy beacon to compromised host
+  c2_command <cmd>     - Execute command on beacon
+  beacons              - List active beacons
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🎣 SOCIAL ENGINEERING                                                        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  phish                - Launch phishing campaign
+  start_landing        - Start phishing landing page
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🥷 EDR/AV EVASION                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  bypass_amsi          - Bypass AMSI protection
+  bypass_edr           - Execute with EDR bypass techniques
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 📤 DATA EXFILTRATION                                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  exfil_dns <data>     - Exfiltrate data via DNS tunneling
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🔐 PASSWORD ATTACKS                                                          ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  crack_hashes         - Crack password hashes
+  crack_ntlm           - Crack NTLM hashes specifically
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🤖 AUTONOMOUS AI OPERATIONS (v6.0)                                           ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  start_autonomous     - Activate fully autonomous red team AI
+  stop_autonomous      - Stop autonomous operations
+  autonomous_status    - Check autonomous AI status
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🧠 INTELLIGENCE & OSINT                                                      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  start_intelligence   - Start real-time threat intelligence monitoring
+  stop_intelligence    - Stop intelligence monitoring
+  intelligence_summary - Get intelligence feed summary
+  search_intelligence  - Search threat intelligence database
+  trending_vulns       - Get trending vulnerabilities from Twitter/GitHub
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 🏆 BUG BOUNTY KNOWLEDGE BASE                                                 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  bugbounty_init       - Initialize bug bounty knowledge base
+  find_chains          - Find exploit chains for target
+  recommend_next       - Get AI recommendation for next step
+  similar_reports      - Find similar bug bounty reports
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ✅ VERIFICATION & ACCURACY                                                   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  verify_finding       - Verify a finding with multi-method validation
+  accuracy_report      - Get accuracy statistics report
+  confidence_score     - Calculate confidence score for finding
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ 📋 TASK MANAGEMENT                                                           ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  status               - View current engagement status & running tasks
+  task_status <id>     - View detailed task status and results
+  running_tasks        - List all currently running tasks
+  queue_task           - Queue a custom offensive task
+  paths                - View attack paths to high-value targets"""
 
 
 class ChatTextArea(TextArea):  # type: ignore[misc]
@@ -129,7 +251,7 @@ class SplashScreen(Static):  # type: ignore[misc]
 
     def _build_welcome_text(self) -> Text:
         text = Text("Welcome to ", style=Style(color="white", bold=True))
-        text.append("Strix", style=Style(color=self.PRIMARY_GREEN, bold=True))
+        text.append("VaultSec", style=Style(color=self.PRIMARY_GREEN, bold=True))
         text.append("!", style=Style(color="white", bold=True))
         return text
 
@@ -137,7 +259,7 @@ class SplashScreen(Static):  # type: ignore[misc]
         return Text(f"v{self._version}", style=Style(color="white", dim=True))
 
     def _build_tagline_text(self) -> Text:
-        return Text("Open-source AI hackers for your apps", style=Style(color="white", dim=True))
+        return Text("Autonomous VaultSec operations for your apps", style=Style(color="white", dim=True))
 
     def _build_start_line_text(self, phase: int) -> Text:
         emphasize = phase % 2 == 1
@@ -145,21 +267,27 @@ class SplashScreen(Static):  # type: ignore[misc]
         strix_style = Style(color=self.PRIMARY_GREEN, bold=bool(emphasize))
 
         text = Text("Starting ", style=base_style)
-        text.append("Strix", style=strix_style)
-        text.append(" Cybersecurity Agent", style=base_style)
+        text.append("VaultSec", style=strix_style)
+        text.append(" Operations Agent", style=base_style)
 
         return text
 
 
 class HelpScreen(ModalScreen):  # type: ignore[misc]
     def compose(self) -> ComposeResult:
+        shortcuts = (
+            "F1        Help\n"
+            "Ctrl+Q/C  Quit\n"
+            "ESC       Stop Agent\n"
+            "Enter     Send message to agent\n"
+            "Tab       Switch panels\n"
+            "↑/↓       Navigate tree"
+        )
+
         yield Grid(
-            Label("🦉 Strix Help", id="help_title"),
-            Label(
-                "F1        Help\nCtrl+Q/C  Quit\nESC       Stop Agent\n"
-                "Enter     Send message to agent\nTab       Switch panels\n↑/↓       Navigate tree",
-                id="help_content",
-            ),
+            Label("🛡️ VaultSec Help", id="help_title"),
+            Label(shortcuts, id="help_content"),
+            VerticalScroll(Static(VAULTSEC_COMMAND_REFERENCE, id="vaultsec_command_reference")),
             id="dialog",
         )
 
@@ -219,7 +347,7 @@ class StopAgentScreen(ModalScreen):  # type: ignore[misc]
 class QuitScreen(ModalScreen):  # type: ignore[misc]
     def compose(self) -> ComposeResult:
         yield Grid(
-            Label("🦉 Quit Strix? ", id="quit_title"),
+            Label("🛡️ Quit VaultSec? ", id="quit_title"),
             Grid(
                 Button("Yes", variant="error", id="quit"),
                 Button("No", variant="default", id="cancel"),
@@ -435,7 +563,7 @@ class StrixTUIApp(App):  # type: ignore[misc]
             self.call_after_refresh(self._focus_agents_tree)
 
     def on_mount(self) -> None:
-        self.title = "strix"
+        self.title = "VaultSec"
 
         self.set_timer(4.5, self._hide_splash_screen)
 
@@ -785,7 +913,7 @@ class StrixTUIApp(App):  # type: ignore[misc]
                 asyncio.set_event_loop(loop)
 
                 try:
-                    agent = StrixAgent(self.agent_config)
+                    agent = VaultAgent(self.agent_config)
 
                     if not self._scan_stop_event.is_set():
                         loop.run_until_complete(agent.execute_scan(self.scan_config))
@@ -1235,6 +1363,6 @@ class StrixTUIApp(App):  # type: ignore[misc]
 
 
 async def run_tui(args: argparse.Namespace) -> None:
-    """Run strix in interactive TUI mode with textual."""
+    """Run VaultSec in interactive TUI mode with textual."""
     app = StrixTUIApp(args)
     await app.run_async()

@@ -11,6 +11,10 @@ import shutil
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import litellm
 from docker.errors import DockerException
 from rich.console import Console

@@ -1,10 +1,10 @@
 from .base_agent import BaseAgent
 from .state import AgentState
-from .StrixAgent import StrixAgent
+from .VaultAgent import VaultAgent
 
 
 __all__ = [
     "AgentState",
     "BaseAgent",
-    "StrixAgent",
+    "VaultAgent",
 ]

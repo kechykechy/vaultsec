@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from strix.agents.StrixAgent import StrixAgent
+from strix.agents.VaultAgent import VaultAgent
 from strix.llm.config import LLMConfig
 from strix.telemetry.tracer import Tracer, set_global_tracer
 
@@ -133,7 +133,7 @@ async def run_cli(args: Any) -> None:  # noqa: PLR0915
     try:
         console.print()
         with console.status("[bold cyan]Running penetration test...", spinner="dots") as status:
-            agent = StrixAgent(agent_config)
+            agent = VaultAgent(agent_config)
             result = await agent.execute_scan(scan_config)
             status.stop()
 

@@ -4,7 +4,7 @@ from strix.agents.base_agent import BaseAgent
 from strix.llm.config import LLMConfig
 
 
-class StrixAgent(BaseAgent):
+class VaultAgent(BaseAgent):
     max_iterations = 300
 
     def __init__(self, config: dict[str, Any]):

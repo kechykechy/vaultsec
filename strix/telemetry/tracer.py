@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -203,6 +204,20 @@ class Tracer:
             run_dir = self.get_run_dir()
             self.end_time = datetime.now(UTC).isoformat()
 
+            # Update run metadata with completion info
+            self.run_metadata["end_time"] = self.end_time
+            self.run_metadata["duration_seconds"] = self._calculate_duration()
+            self.run_metadata["vulnerabilities_count"] = len(self.vulnerability_reports)
+            self.run_metadata["agents_count"] = len(self.agents)
+
+            # Derive a simple status flag if not already set
+            status = self.run_metadata.get("status") or "running"
+            if self.scan_results and not self.scan_results.get("success", True):
+                status = "failed"
+            elif status == "running":
+                status = "completed"
+            self.run_metadata["status"] = status
+
             if self.final_scan_result:
                 penetration_test_report_file = run_dir / "penetration_test_report.md"
                 with penetration_test_report_file.open("w", encoding="utf-8") as f:
@@ -258,6 +273,32 @@ class Tracer:
                     f"Saved {len(self.vulnerability_reports)} vulnerability reports to: {vuln_dir}"
                 )
                 logger.info(f"Saved vulnerability index to: {vuln_csv_file}")
+
+            # Persist a structured JSON snapshot for UI / API consumers
+            try:
+                snapshot = {
+                    "run_metadata": self.run_metadata,
+                    "agents": self.agents,
+                    "tool_executions": self.tool_executions,
+                    "chat_messages": self.chat_messages,
+                    "vulnerability_reports": self.vulnerability_reports,
+                    "scan_config": self.scan_config,
+                    "final_scan_result": self.final_scan_result,
+                }
+
+                # LLM usage stats are optional – ignore errors if collection fails
+                try:
+                    snapshot["llm_stats"] = self.get_total_llm_stats()
+                except Exception:  # noqa: BLE001
+                    logger.debug("Unable to collect LLM stats for snapshot", exc_info=True)
+
+                snapshot_path = run_dir / "run.json"
+                with snapshot_path.open("w", encoding="utf-8") as f:
+                    json.dump(snapshot, f, indent=2)
+
+                logger.info(f"Saved structured run snapshot to: {snapshot_path}")
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to save structured run snapshot")
 
             logger.info(f"📊 Essential scan data saved to: {run_dir}")
 

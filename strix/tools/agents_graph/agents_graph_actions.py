@@ -224,7 +224,7 @@ def create_agent(
                     "agent_id": None,
                 }
 
-        from strix.agents import StrixAgent
+        from strix.agents import VaultAgent
         from strix.agents.state import AgentState
         from strix.llm.config import LLMConfig
 
@@ -249,7 +249,7 @@ def create_agent(
         if parent_agent and hasattr(parent_agent, "non_interactive"):
             agent_config["non_interactive"] = parent_agent.non_interactive
 
-        agent = StrixAgent(agent_config)
+        agent = VaultAgent(agent_config)
 
         inherited_messages = []
         if inherit_context:

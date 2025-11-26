@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaultsec | AI Security Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+ <body class="bg-slate-950 text-slate-200 h-screen overflow-hidden">
+     <div id="root"></div>
+
+     <script
+         type="text/babel"
+         data-presets="react">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- Components ---
+
+        const StatusBadge = ({ status }) => {
+            const colors = {
+                running: "bg-green-500/20 text-green-400 border-green-500/30",
+                completed: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+                failed: "bg-red-500/20 text-red-400 border-red-500/30",
+                waiting: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+                stopped: "bg-gray-500/20 text-gray-400 border-gray-500/30"
+            };
+            return (
+                <span className={`px-2 py-0.5 rounded text-xs border ${colors[status] || colors.waiting} uppercase tracking-wider font-semibold`}>
+                    {status}
+                </span>
+            );
+        };
+
+        const AgentNode = ({ agent, isSelected, onClick }) => (
+            <div 
+                onClick={() => onClick(agent.id)}
+                className={`p-3 rounded-lg cursor-pointer transition-all mb-2 border ${isSelected ? 'bg-slate-800 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-slate-900 border-slate-800 hover:border-slate-700'}`}
+            >
+                <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-sm truncate" title={agent.name}>{agent.name}</span>
+                    <StatusBadge status={agent.status} />
+                </div>
+                <div className="text-xs text-slate-400 truncate">{agent.task}</div>
+            </div>
+        );
+
+        const ChatMessage = ({ msg }) => {
+            const isUser = msg.role === 'user';
+            return (
+                <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+                    <div className={`max-w-[80%] rounded-lg p-4 ${isUser ? 'bg-indigo-600 text-white' : 'bg-slate-800 border border-slate-700'}`}>
+                        <div className="text-xs opacity-50 mb-1 flex justify-between">
+                            <span>{msg.role === 'user' ? 'USER' : msg.agent_id}</span>
+                            <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <div className="prose prose-invert prose-sm whitespace-pre-wrap font-light">
+                            {msg.content}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ToolExecution = ({ tool }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            
+            return (
+                <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900 overflow-hidden">
+                    <div 
+                        className="p-3 flex items-center justify-between cursor-pointer hover:bg-slate-800 transition-colors"
+                        onClick={() => setIsOpen(!isOpen)}
+                    >
+                        <div className="flex items-center gap-3">
+                            <span className="text-purple-400 font-mono text-xs">🛠 {tool.tool_name}</span>
+                            <span className={`text-xs ${tool.status === 'error' ? 'text-red-400' : 'text-green-400'}`}>
+                                {tool.status === 'running' ? 'Running...' : tool.status}
+                            </span>
+                            {tool.screenshot_url && <span className="text-xs text-blue-400">📷 Screenshot</span>}
+                        </div>
+                        <span className="text-slate-500 text-xs">
+                            {isOpen ? 'Hide' : 'Show'} Details
+                        </span>
+                    </div>
+                    
+                    {isOpen && (
+                        <div className="p-3 border-t border-slate-700 bg-slate-950">
+                            {tool.screenshot_url && (
+                                <div className="mb-3">
+                                    <span className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Screenshot</span>
+                                    <img src={tool.screenshot_url} alt="Tool Screenshot" className="rounded border border-slate-700 max-h-64 object-contain" />
+                                </div>
+                            )}
+                            <div className="mb-2">
+                                <span className="text-xs uppercase tracking-wider text-slate-500">Arguments</span>
+                                <pre className="mono text-xs text-slate-300 mt-1 overflow-x-auto p-2 bg-slate-900 rounded">
+                                    {JSON.stringify(tool.args, null, 2)}
+                                </pre>
+                            </div>
+                            <div>
+                                <span className="text-xs uppercase tracking-wider text-slate-500">Result</span>
+                                <pre className="mono text-xs text-slate-300 mt-1 overflow-x-auto p-2 bg-slate-900 rounded">
+                                    {tool.result}
+                                </pre>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const VulnerabilityCard = ({ vuln }) => (
+            <div className="p-4 bg-slate-900 border-l-4 border-red-500 rounded shadow-sm mb-3">
+                <div className="flex justify-between items-start">
+                    <h4 className="font-bold text-red-400">{vuln.title}</h4>
+                    <span className="text-xs bg-red-900/30 text-red-300 px-2 py-1 rounded uppercase font-bold">{vuln.severity}</span>
+                </div>
+                <p className="text-sm text-slate-400 mt-2 line-clamp-2">{vuln.content}</p>
+                <div className="mt-3 text-xs text-slate-500 flex justify-between">
+                    <span>ID: {vuln.id}</span>
+                    <span>{new Date(vuln.timestamp).toLocaleTimeString()}</span>
+                </div>
+            </div>
+        );
+
+        const Dashboard = () => {
+            const [isConnected, setIsConnected] = useState(false);
+            const [agents, setAgents] = useState({});
+            const [events, setEvents] = useState([]);
+            const [vulns, setVulns] = useState([]);
+            const [selectedAgent, setSelectedAgent] = useState(null);
+            const [scanStatus, setScanStatus] = useState('idle');
+            
+            // New Scan Form State
+            const [targetUrl, setTargetUrl] = useState('');
+            const [instructions, setInstructions] = useState('');
+            const [scanMode, setScanMode] = useState('web');
+            const [secondaryTarget, setSecondaryTarget] = useState('');
+            const [secondaryType, setSecondaryType] = useState('repository');
+            const [authUsername, setAuthUsername] = useState('');
+            const [authPassword, setAuthPassword] = useState('');
+
+            // Memories / run history state
+            const [showMemories, setShowMemories] = useState(false);
+            const [runs, setRuns] = useState([]);
+            const [isLoadingRuns, setIsLoadingRuns] = useState(false);
+            const [runsError, setRunsError] = useState(null);
+            const [currentRunMeta, setCurrentRunMeta] = useState(null);
+            const [isViewingMemory, setIsViewingMemory] = useState(false);
+
+            const messagesEndRef = useRef(null);
+
+            const scanModeOptions = [
+                {
+                    id: 'web',
+                    title: 'Web Application',
+                    description: 'Standard unauthenticated web assessment',
+                    instructions: 'Perform a comprehensive unauthenticated web application assessment. Focus on OWASP Top 10, misconfigurations, and exposed admin panels.'
+                },
+                {
+                    id: 'auth',
+                    title: 'Authenticated Web App',
+                    description: 'Use provided credentials before testing',
+                    instructions: 'Perform authenticated testing of the target web application. Establish a session using the supplied credentials and evaluate privileged functionality.'
+                },
+                {
+                    id: 'multi',
+                    title: 'Multi-Target',
+                    description: 'Assess code + deployed target together',
+                    instructions: 'Correlate vulnerabilities between the deployed target and the secondary asset. Prioritize findings that span both surfaces.'
+                }
+            ];
+
+            const selectedMode = scanModeOptions.find(option => option.id === scanMode) || scanModeOptions[0];
+
+            useEffect(() => {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws`;
+                const ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => setIsConnected(true);
+                ws.onclose = () => setIsConnected(false);
+                
+                ws.onmessage = (event) => {
+                    const msg = JSON.parse(event.data);
+                    handleWebSocketMessage(msg);
+                };
+
+                return () => ws.close();
+            }, []);
+
+            const handleWebSocketMessage = (msg) => {
+                const { type, data } = msg;
+                
+                if (type === 'agent_created') {
+                    setAgents(prev => ({...prev, [data.agent_id]: data}));
+                    if (!selectedAgent) setSelectedAgent(data.agent_id);
+                } else if (type === 'agent_status') {
+                    setAgents(prev => ({
+                        ...prev, 
+                        [data.agent_id]: {...prev[data.agent_id], status: data.status}
+                    }));
+                } else if (type === 'chat_message') {
+                    setEvents(prev => [...prev, { type: 'chat', ...data }]);
+                } else if (type === 'tool_start') {
+                    setEvents(prev => [...prev, { type: 'tool', status: 'running', ...data }]);
+                } else if (type === 'tool_end') {
+                    setEvents(prev => prev.map(e => 
+                        (e.type === 'tool' && e.execution_id === data.execution_id) 
+                        ? { ...e, status: data.status, result: data.result }
+                        : e
+                    ));
+                } else if (type === 'vulnerability') {
+                    setVulns(prev => [...prev, data]);
+                }
+            };
+
+            const cloneRun = async (runId) => {
+                try {
+                    const response = await fetch('/api/runs/' + encodeURIComponent(runId));
+                    if (!response.ok) {
+                        throw new Error('Failed to load run');
+                    }
+                    const data = await response.json();
+
+                    const scanConfig = data.scan_config || {};
+                    const targets = scanConfig.targets || [];
+                    const primary = targets.length > 0 ? targets[0] : {};
+
+                    // Primary target URL
+                    setTargetUrl(primary.target || '');
+
+                    // Decide scan mode & populate secondary target if present
+                    let mode = 'web';
+                    if (targets.length > 1) {
+                        mode = 'multi';
+                        const second = targets[1] || {};
+                        const secondType = (second.type || '').toLowerCase();
+                        setSecondaryType(secondType === 'repo' || secondType === 'repository' ? 'repository' : 'url');
+                        setSecondaryTarget(second.target || '');
+                    } else if (primary.instruction && primary.instruction.toLowerCase().includes('authenticate using username')) {
+                        // Treat as authenticated scan, but do not attempt to recover secrets
+                        mode = 'auth';
+                        setSecondaryTarget('');
+                    } else {
+                        setSecondaryTarget('');
+                    }
+
+                    setScanMode(mode);
+
+                    // Reuse full user instructions; they're already a combination of preset + custom
+                    setInstructions(scanConfig.user_instructions || '');
+
+                    // Reset auth fields for security
+                    setAuthUsername('');
+                    setAuthPassword('');
+
+                    // Exit memory view and close modal; user can now start a fresh scan with this config
+                    setShowMemories(false);
+                    setIsViewingMemory(false);
+                    setCurrentRunMeta(null);
+                    setScanStatus('idle');
+                    setAgents({});
+                    setEvents([]);
+                    setVulns([]);
+                } catch (e) {
+                    console.error(e);
+                    alert('Failed to clone run configuration');
+                }
+            };
+
+            const loadRuns = async () => {
+                setIsLoadingRuns(true);
+                setRunsError(null);
+                try {
+                    const response = await fetch('/api/runs');
+                    if (!response.ok) {
+                        throw new Error('Failed to load memories');
+                    }
+                    const data = await response.json();
+                    setRuns(data.runs || []);
+                } catch (e) {
+                    console.error(e);
+                    setRunsError('Unable to load memories');
+                } finally {
+                    setIsLoadingRuns(false);
+                }
+            };
+
+            const viewRun = async (runId) => {
+                try {
+                    const response = await fetch('/api/runs/' + encodeURIComponent(runId));
+                    if (!response.ok) {
+                        throw new Error('Failed to load run');
+                    }
+                    const data = await response.json();
+
+                    const meta = data.run_metadata || {};
+                    const agentsData = data.agents || {};
+                    const chatMessages = data.chat_messages || [];
+                    const toolExecutions = data.tool_executions || {};
+                    const vulnsData = data.vulnerability_reports || [];
+
+                    const loadedEvents = [];
+                    chatMessages.forEach((m) => {
+                        const evt = {
+                            type: 'chat',
+                            ...m,
+                        };
+                        loadedEvents.push(evt);
+                    });
+
+                    Object.values(toolExecutions).forEach((tool) => {
+                        const evt = {
+                            type: 'tool',
+                            execution_id: tool.execution_id,
+                            tool_name: tool.tool_name,
+                            args: tool.args,
+                            result: tool.result,
+                            status: tool.status,
+                            timestamp: tool.timestamp,
+                            screenshot_url: tool.screenshot_url,
+                        };
+                        loadedEvents.push(evt);
+                    });
+
+                    loadedEvents.sort((a, b) => {
+                        const ta = a.timestamp || '';
+                        const tb = b.timestamp || '';
+                        if (ta < tb) return -1;
+                        if (ta > tb) return 1;
+                        return 0;
+                    });
+
+                    setIsConnected(false);
+                    setScanStatus('completed');
+                    setAgents(agentsData);
+                    setEvents(loadedEvents);
+                    setVulns(vulnsData);
+                    setCurrentRunMeta(meta);
+                    setIsViewingMemory(true);
+
+                    const agentIds = Object.keys(agentsData);
+                    if (agentIds.length > 0) {
+                        setSelectedAgent(agentIds[0]);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('Failed to load run memory');
+                }
+            };
+
+            const startScan = async () => {
+                const primaryTarget = targetUrl.trim();
+                if (!primaryTarget) {
+                    alert('Please provide a primary target URL.');
+                    return;
+                }
+
+                const targets = [{ type: 'url', target: primaryTarget }];
+
+                if (scanMode === 'auth') {
+                    const username = authUsername.trim();
+                    const password = authPassword.trim();
+                    if (!username || !password) {
+                        alert('Provide credentials for authenticated scans.');
+                        return;
+                    }
+                    targets[0].instruction = `Authenticate using username "${username}" and password "${password}" before testing.`;
+                }
+
+                if (scanMode === 'multi') {
+                    const second = secondaryTarget.trim();
+                    if (!second) {
+                        alert('Provide a secondary target for multi-target scans.');
+                        return;
+                    }
+                    targets.push({
+                        type: secondaryType === 'repository' ? 'repo' : 'url',
+                        target: second
+                    });
+                }
+
+                const presetInstructions = selectedMode.instructions;
+                const combinedInstructions = [presetInstructions, instructions.trim()]
+                    .filter(Boolean)
+                    .join('\n\n');
+
+                // Reset any memory view when starting a fresh live scan
+                setIsViewingMemory(false);
+                setCurrentRunMeta(null);
+
+                setScanStatus('running');
+                setAgents({});
+                setEvents([]);
+                setVulns([]);
+                
+                try {
+                    const response = await fetch('/api/scan/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            targets,
+                            user_instructions: combinedInstructions,
+                            run_name: `scan-${Date.now()}`
+                        })
+                    });
+                    
+                    if (!response.ok) throw new Error('Failed to start scan');
+                    
+                } catch (e) {
+                    console.error(e);
+                    setScanStatus('error');
+                }
+            };
+
+            // Filter events for the selected agent view
+            const visibleEvents = useMemo(() => {
+             if (!selectedAgent) return [];
+             // Logic to show events relevant to selected agent (and maybe its children?)
+             // For simplicity, showing all events for now, or filter by agent_id
+             return events.filter(e => e.agent_id === selectedAgent || !e.agent_id);
+         }, [events, selectedAgent]);
+
+         useEffect(() => {
+             if (messagesEndRef.current) {
+                 messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+             }
+         }, [visibleEvents]);
+
+            if (scanStatus === 'idle') {
+                return (
+                    <div className="h-screen flex items-center justify-center bg-slate-950">
+                        <div className="max-w-md w-full p-8 bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl">
+                            <div className="flex justify-center mb-6">
+                                <div className="text-6xl">🦉</div>
+                            </div>
+                            <h1 className="text-3xl font-bold text-center text-white mb-2">Vaultsec</h1>
+                            <p className="text-center text-slate-400 mb-8">Autonomous Security Agent Platform</p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Scan Format</label>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {scanModeOptions.map(option => (
+                                            <button
+                                                type="button"
+                                                key={option.id}
+                                                onClick={() => setScanMode(option.id)}
+                                                className={`w-full text-left p-3 rounded-lg border transition-all ${scanMode === option.id ? 'border-green-500 bg-green-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}
+                                            >
+                                                <div className="font-semibold text-sm text-white">{option.title}</div>
+                                                <div className="text-xs text-slate-400">{option.description}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Target URL</label>
+                                    <input 
+                                        type="text" 
+                                        value={targetUrl}
+                                        onChange={(e) => setTargetUrl(e.target.value)}
+                                        placeholder="https://example.com"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                    />
+                                </div>
+
+                                {scanMode === 'auth' && (
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <div>
+                                            <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Username</label>
+                                            <input
+                                                type="text"
+                                                value={authUsername}
+                                                onChange={(e) => setAuthUsername(e.target.value)}
+                                                placeholder="demo_user"
+                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Password</label>
+                                            <input
+                                                type="password"
+                                                value={authPassword}
+                                                onChange={(e) => setAuthPassword(e.target.value)}
+                                                placeholder="••••••••"
+                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {scanMode === 'multi' && (
+                                    <div className="space-y-2">
+                                        <label className="block text-xs uppercase tracking-wider text-slate-500">Secondary Target</label>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            <select
+                                                value={secondaryType}
+                                                onChange={(e) => setSecondaryType(e.target.value)}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors text-sm"
+                                            >
+                                                <option value="repository">Source Repository</option>
+                                                <option value="url">Additional URL or API Host</option>
+                                            </select>
+                                            <input
+                                                type="text"
+                                                value={secondaryTarget}
+                                                onChange={(e) => setSecondaryTarget(e.target.value)}
+                                                placeholder={secondaryType === 'repository' ? 'https://github.com/org/app' : 'https://api.example.com'}
+                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Instructions (Optional)</label>
+                                    <textarea 
+                                        value={instructions}
+                                        onChange={(e) => setInstructions(e.target.value)}
+                                        placeholder="E.g., Focus on SQL injection..."
+                                        className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors h-24 resize-none"
+                                    />
+                                    <p className="text-[10px] text-slate-500 mt-1">Preset guidance: {selectedMode.description}. Additional notes will be appended to the default playbook.</p>
+                                </div>
+                                <button 
+                                    onClick={startScan}
+                                    className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded transition-all mt-4 flex items-center justify-center gap-2"
+                                >
+                                    <span>START SECURITY SCAN</span>
+                                    <i data-lucide="play" className="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex h-screen">
+                    {/* Left Sidebar: Agents */}
+                    <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col">
+                        <div className="p-4 border-b border-slate-800 flex items-center gap-2">
+                            <span className="text-xl">🛡️</span>
+                            <span className="font-bold text-lg tracking-tight">Vaultsec Status</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
+                            <h3 className="text-xs uppercase text-slate-500 font-semibold mb-4">Active Agents</h3>
+                            {Object.values(agents).map(agent => (
+                                <AgentNode 
+                                    key={agent.id} 
+                                    agent={agent} 
+                                    isSelected={selectedAgent === agent.id}
+                                    onClick={setSelectedAgent}
+                                />
+                            ))}
+                        </div>
+                        <div className="p-4 border-t border-slate-800">
+                             <div className="flex items-center gap-2 text-slate-400 text-xs">
+                                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                {isConnected ? 'System Online' : 'Disconnected'}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Center: Activity Feed */}
+                    <div className="flex-1 bg-slate-950 flex flex-col min-w-0">
+                        <div className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur">
+                            <div className="flex flex-col">
+                                <h2 className="font-bold text-lg text-white">
+                                    {selectedAgent
+                                        ? ((agents[selectedAgent] && agents[selectedAgent].name) || 'Unknown Agent')
+                                        : 'Mission Control'}
+                                </h2>
+                                {isViewingMemory && currentRunMeta && (
+                                    <div className="mt-0.5 text-xs text-slate-400">
+                                        Viewing memory: {currentRunMeta.run_name || currentRunMeta.run_id || 'Unknown run'}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        setShowMemories(true);
+                                        if (runs.length === 0 && !isLoadingRuns) {
+                                            loadRuns();
+                                        }
+                                    }}
+                                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-medium transition-colors text-slate-300 border border-slate-700"
+                                >
+                                    Memories
+                                </button>
+                                <button 
+                                    onClick={() => window.open('/api/scan/report', '_blank')}
+                                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-medium transition-colors text-slate-300 border border-slate-700"
+                                >
+                                    Download Report
+                                </button>
+                                <button 
+                                    onClick={() => setScanStatus('idle')}
+                                    className="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded text-xs font-medium transition-colors"
+                                >
+                                    Stop Scan
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
+                            {visibleEvents.length === 0 ? (
+                                <div className="flex items-center justify-center h-full text-slate-600">
+                                    Waiting for agent activity...
+                                </div>
+                            ) : (
+                                visibleEvents.map((event, idx) => (
+                                    event.type === 'chat' 
+                                        ? <ChatMessage key={idx} msg={event} />
+                                        : <ToolExecution key={idx} tool={event} />
+                                ))
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+                        
+                        {/* Input Area (optional for future interaction) */}
+                        <div className="p-4 border-t border-slate-800 bg-slate-900/30">
+                            <input 
+                                type="text" 
+                                placeholder="Send message to agent..." 
+                                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm focus:border-indigo-500 outline-none"
+                                disabled
+                            />
+                        </div>
+                    </div>
+
+                    {/* Right Sidebar: Findings & Stats */}
+                    <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col">
+                        <div className="p-4 border-b border-slate-800">
+                            <h3 className="font-bold text-white">Vulnerabilities</h3>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
+                            {vulns.length === 0 ? (
+                                <div className="text-center text-slate-500 py-10 text-sm">
+                                    No vulnerabilities found yet.
+                                    <br/>
+                                    <span className="text-xs opacity-50">(That's usually a good thing)</span>
+                                </div>
+                            ) : (
+                                vulns.map(v => <VulnerabilityCard key={v.id} vuln={v} />)
+                            )}
+                        </div>
+                    </div>
+
+                    {showMemories && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                            <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+                                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                                    <h3 className="text-sm font-semibold text-white">Memories</h3>
+                                    <button
+                                        onClick={() => setShowMemories(false)}
+                                        className="text-xs text-slate-400 hover:text-slate-200"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                    {isLoadingRuns ? (
+                                        <div className="text-sm text-slate-400">Loading memories...</div>
+                                    ) : runs.length === 0 ? (
+                                        <div className="text-sm text-slate-500">
+                                            No saved runs yet. Start a scan to create one.
+                                        </div>
+                                    ) : (
+                                        runs.map((run) => (
+                                            <div
+                                                key={run.run_id}
+                                                className="flex items-center justify-between px-3 py-2 rounded-lg border border-slate-800 bg-slate-950 hover:border-slate-700"
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-medium text-white truncate">
+                                                        {run.run_name}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500">
+                                                        {(run.status || 'unknown').toUpperCase()} • {run.vulnerabilities_count || 0} vulns • {run.agents_count || 0} agents
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500 truncate">
+                                                        Target: {(run.targets && run.targets[0] && run.targets[0].target) ? run.targets[0].target : 'N/A'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => cloneRun(run.run_id)}
+                                                        className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-50 border border-slate-500"
+                                                    >
+                                                        Use config
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setShowMemories(false);
+                                                            viewRun(run.run_id);
+                                                        }}
+                                                        className="px-2 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                                                    >
+                                                        View
+                                                    </button>
+                                                    <button
+                                                        onClick={() => window.open('/api/runs/' + encodeURIComponent(run.run_id) + '/report', '_blank')}
+                                                        className="px-2 py-1 text-xs rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700"
+                                                    >
+                                                        Report
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                    {runsError && (
+                                        <div className="text-xs text-red-400 mt-2">
+                                            {runsError}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+        
+        // Initialize Icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
