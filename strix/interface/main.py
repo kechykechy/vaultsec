@@ -25,8 +25,7 @@ from strix.interface.cli import run_cli
 from strix.interface.tui import run_tui
 from strix.interface.utils import (
     assign_workspace_subdirs,
-    build_llm_stats_text,
-    build_stats_text,
+    build_final_stats_text,
     check_docker_connection,
     clone_repository,
     collect_local_sources,
@@ -271,8 +270,12 @@ Examples:
   strix --target https://github.com/user/repo --target https://example.com
   strix --target ./my-project --target https://staging.example.com --target https://prod.example.com
 
-  # Custom instructions
+  # Custom instructions (inline)
   strix --target example.com --instruction "Focus on authentication vulnerabilities"
+
+  # Custom instructions (from file)
+  strix --target example.com --instruction ./instructions.txt
+  strix --target https://app.com --instruction /path/to/detailed_instructions.md
         """,
     )
 
@@ -293,7 +296,9 @@ Examples:
         "testing approaches (e.g., 'Perform thorough authentication testing'), "
         "test credentials (e.g., 'Use the following credentials to access the app: "
         "admin:password123'), "
-        "or areas of interest (e.g., 'Check login API endpoint for security issues')",
+        "or areas of interest (e.g., 'Check login API endpoint for security issues'). "
+        "You can also provide a path to a file containing detailed instructions "
+        "(e.g., '--instruction ./instructions.txt').",
     )
 
     parser.add_argument(
@@ -313,6 +318,17 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    if args.instruction:
+        instruction_path = Path(args.instruction)
+        if instruction_path.exists() and instruction_path.is_file():
+            try:
+                with instruction_path.open(encoding="utf-8") as f:
+                    args.instruction = f.read().strip()
+                    if not args.instruction:
+                        parser.error(f"Instruction file '{instruction_path}' is empty")
+            except Exception as e:  # noqa: BLE001
+                parser.error(f"Failed to read instruction file '{instruction_path}': {e}")
 
     args.targets_info = []
     for target in args.target:
@@ -357,8 +373,7 @@ def display_completion_message(args: argparse.Namespace, results_path: Path) -> 
         completion_text.append(" • ", style="dim white")
         completion_text.append("Penetration test interrupted by user", style="white")
 
-    stats_text = build_stats_text(tracer)
-    llm_stats_text = build_llm_stats_text(tracer)
+    stats_text = build_final_stats_text(tracer)
 
     target_text = Text()
     if len(args.targets_info) == 1:
@@ -377,9 +392,6 @@ def display_completion_message(args: argparse.Namespace, results_path: Path) -> 
 
     if stats_text.plain:
         panel_parts.extend(["\n", stats_text])
-
-    if llm_stats_text.plain:
-        panel_parts.extend(["\n", llm_stats_text])
 
     if scan_completed or has_vulnerabilities:
         results_text = Text()
@@ -463,7 +475,7 @@ def main() -> None:
     asyncio.run(warm_up_llm())
 
     if not args.run_name:
-        args.run_name = generate_run_name()
+        args.run_name = generate_run_name(args.targets_info)
 
     for target_info in args.targets_info:
         if target_info["type"] == "repository":
@@ -479,7 +491,7 @@ def main() -> None:
     else:
         asyncio.run(run_tui(args))
 
-    results_path = Path("agent_runs") / args.run_name
+    results_path = Path("strix_runs") / args.run_name
     display_completion_message(args, results_path)
 
     if args.non_interactive:

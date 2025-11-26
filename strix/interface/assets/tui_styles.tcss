@@ -33,18 +33,32 @@ Screen {
     background: transparent;
 }
 
+#sidebar {
+    width: 25%;
+    background: transparent;
+    margin-left: 1;
+}
+
 #agents_tree {
-    width: 20%;
+    height: 1fr;
     background: transparent;
     border: round #262626;
     border-title-color: #a8a29e;
     border-title-style: bold;
-    margin-left: 1;
     padding: 1;
+    margin-bottom: 0;
+}
+
+#stats_display {
+    height: auto;
+    max-height: 15;
+    background: transparent;
+    padding: 0;
+    margin: 0;
 }
 
 #chat_area_container {
-    width: 80%;
+    width: 75%;
     background: transparent;
 }
 

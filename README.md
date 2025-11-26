@@ -80,22 +80,20 @@ strix --target ./app-directory
 ```
 
 > [!NOTE]
-> First run automatically pulls the sandbox Docker image. Results are saved to `agent_runs/<run-name>`
+> First run automatically pulls the sandbox Docker image. Results are saved to `strix_runs/<run-name>`
 
-## 🏆 Enterprise Platform
+## ☁️ Run Strix in Cloud
 
-Want to skip the setup? Try our cloud-hosted version at **[usestrix.com](https://usestrix.com)**
+Want to skip the local setup, API keys, and unpredictable LLM costs? Run the hosted cloud version of Strix at **[app.usestrix.com](https://app.usestrix.com)**.
 
-Our managed platform provides:
+Launch a scan in just a few minutes—no setup or configuration required—and you’ll get:
 
-- **📈 Executive Dashboards**
-- **🧠 Custom Fine-Tuned Models**
-- **⚙️ CI/CD Integration**
-- **🔍 Large-Scale Scanning**
-- **🔌 Third-Party Integrations**
-- **🎯 Enterprise Support**
+- **A full pentest report** with validated findings and clear remediation steps
+- **Shareable dashboards** your team can use to track fixes over time
+- **CI/CD and GitHub integrations** to block risky changes before production
+- **Continuous monitoring** so new vulnerabilities are caught quickly
 
-[**Get Enterprise Demo →**](https://usestrix.com)
+[**Run your first pentest now →**](https://app.usestrix.com)
 
 ---
 
@@ -209,7 +207,7 @@ export LLM_API_BASE="your-api-base-url"  # if using a local model, e.g. Ollama, 
 export PERPLEXITY_API_KEY="your-api-key"  # for search capabilities
 ```
 
-[OpenAI's GPT-5](https://openai.com/api/) (`openai/gpt-5`) and [Anthropic's Claude Sonnet 4.5](https://claude.com/platform/api) (`anthropic/claude-sonnet-4-5`) work best with Strix, but we support many [other options](https://docs.litellm.ai/docs/providers).
+[OpenAI's GPT-5](https://openai.com/api/) (`openai/gpt-5`) and [Anthropic's Claude Sonnet 4.5](https://claude.com/platform/api) (`anthropic/claude-sonnet-4-5`) are the recommended models for best results with Strix. We also support many [other options](https://docs.litellm.ai/docs/providers), including cloud and local models, though their performance and reliability may vary.
 
 ## 🤝 Contributing
 

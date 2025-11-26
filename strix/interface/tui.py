@@ -31,6 +31,7 @@ from textual.widgets import Button, Label, Static, TextArea, Tree
 from textual.widgets.tree import TreeNode
 
 from strix.agents.VaultAgent import VaultAgent
+from strix.interface.utils import build_live_stats_text
 from strix.llm.config import LLMConfig
 from strix.telemetry.tracer import Tracer, set_global_tracer
 
@@ -521,8 +522,12 @@ class StrixTUIApp(App):  # type: ignore[misc]
             agents_tree.guide_depth = 3
             agents_tree.guide_style = "dashed"
 
+            stats_display = Static("", id="stats_display")
+
+            sidebar = Vertical(agents_tree, stats_display, id="sidebar")
+
             content_container.mount(chat_area_container)
-            content_container.mount(agents_tree)
+            content_container.mount(sidebar)
 
             chat_area_container.mount(chat_history)
             chat_area_container.mount(agent_status_display)
@@ -608,6 +613,8 @@ class StrixTUIApp(App):  # type: ignore[misc]
         self._update_chat_view()
 
         self._update_agent_status_display()
+
+        self._update_stats_display()
 
     def _update_agent_node(self, agent_id: str, agent_data: dict[str, Any]) -> bool:
         if agent_id not in self.agent_nodes:
@@ -785,6 +792,33 @@ class StrixTUIApp(App):  # type: ignore[misc]
 
         except (KeyError, Exception):
             self._safe_widget_operation(status_display.add_class, "hidden")
+
+    def _update_stats_display(self) -> None:
+        try:
+            stats_display = self.query_one("#stats_display", Static)
+        except (ValueError, Exception):
+            return
+
+        if not self._is_widget_safe(stats_display):
+            return
+
+        stats_content = Text()
+
+        stats_text = build_live_stats_text(self.tracer)
+        if stats_text:
+            stats_content.append(stats_text)
+
+        from rich.panel import Panel
+
+        stats_panel = Panel(
+            stats_content,
+            title="📊 Live Stats",
+            title_align="left",
+            border_style="#22c55e",
+            padding=(0, 1),
+        )
+
+        self._safe_widget_operation(stats_display.update, stats_panel)
 
     def _get_agent_verb(self, agent_id: str) -> str:
         if agent_id not in self._agent_verbs:

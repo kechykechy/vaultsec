@@ -38,14 +38,9 @@ def get_severity_color(severity: str) -> str:
     return severity_colors.get(severity, "#6b7280")
 
 
-def build_stats_text(tracer: Any) -> Text:
-    stats_text = Text()
-    if not tracer:
-        return stats_text
-
+def _build_vulnerability_stats(stats_text: Text, tracer: Any) -> None:
+    """Build vulnerability section of stats text."""
     vuln_count = len(tracer.vulnerability_reports)
-    tool_count = tracer.get_real_tool_count()
-    agent_count = len(tracer.agents)
 
     if vuln_count > 0:
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
@@ -81,64 +76,184 @@ def build_stats_text(tracer: Any) -> Text:
         stats_text.append(" (No exploitable vulnerabilities detected)", style="dim green")
         stats_text.append("\n")
 
+
+def _build_llm_stats(stats_text: Text, total_stats: dict[str, Any]) -> None:
+    """Build LLM usage section of stats text."""
+    if total_stats["requests"] > 0:
+        stats_text.append("\n")
+        stats_text.append("📥 Input Tokens: ", style="bold cyan")
+        stats_text.append(format_token_count(total_stats["input_tokens"]), style="bold white")
+
+        if total_stats["cached_tokens"] > 0:
+            stats_text.append(" • ", style="dim white")
+            stats_text.append("⚡ Cached Tokens: ", style="bold green")
+            stats_text.append(format_token_count(total_stats["cached_tokens"]), style="bold white")
+
+        stats_text.append(" • ", style="dim white")
+        stats_text.append("📤 Output Tokens: ", style="bold cyan")
+        stats_text.append(format_token_count(total_stats["output_tokens"]), style="bold white")
+
+        if total_stats["cost"] > 0:
+            stats_text.append(" • ", style="dim white")
+            stats_text.append("💰 Total Cost: ", style="bold cyan")
+            stats_text.append(f"${total_stats['cost']:.4f}", style="bold yellow")
+    else:
+        stats_text.append("\n")
+        stats_text.append("💰 Total Cost: ", style="bold cyan")
+        stats_text.append("$0.0000 ", style="bold yellow")
+        stats_text.append("• ", style="bold white")
+        stats_text.append("📊 Tokens: ", style="bold cyan")
+        stats_text.append("0", style="bold white")
+
+
+def build_final_stats_text(tracer: Any) -> Text:
+    """Build stats text for final output with detailed messages and LLM usage."""
+    stats_text = Text()
+    if not tracer:
+        return stats_text
+
+    _build_vulnerability_stats(stats_text, tracer)
+
+    tool_count = tracer.get_real_tool_count()
+    agent_count = len(tracer.agents)
+
     stats_text.append("🤖 Agents Used: ", style="bold cyan")
     stats_text.append(str(agent_count), style="bold white")
     stats_text.append(" • ", style="dim white")
     stats_text.append("🛠️ Tools Called: ", style="bold cyan")
     stats_text.append(str(tool_count), style="bold white")
 
+    llm_stats = tracer.get_total_llm_stats()
+    _build_llm_stats(stats_text, llm_stats["total"])
+
     return stats_text
 
 
-def build_llm_stats_text(tracer: Any) -> Text:
-    llm_stats_text = Text()
+def build_live_stats_text(tracer: Any) -> Text:
+    stats_text = Text()
     if not tracer:
-        return llm_stats_text
+        return stats_text
+
+    vuln_count = len(tracer.vulnerability_reports)
+    tool_count = tracer.get_real_tool_count()
+    agent_count = len(tracer.agents)
+
+    stats_text.append("🔍 Vulnerabilities: ", style="bold white")
+    stats_text.append(f"{vuln_count}", style="dim white")
+    stats_text.append("\n")
+    if vuln_count > 0:
+        severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+        for report in tracer.vulnerability_reports:
+            severity = report.get("severity", "").lower()
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+
+        severity_parts = []
+        for severity in ["critical", "high", "medium", "low", "info"]:
+            count = severity_counts[severity]
+            if count > 0:
+                severity_color = get_severity_color(severity)
+                severity_text = Text()
+                severity_text.append(f"{severity.upper()}: ", style=severity_color)
+                severity_text.append(str(count), style=f"bold {severity_color}")
+                severity_parts.append(severity_text)
+
+        for i, part in enumerate(severity_parts):
+            stats_text.append(part)
+            if i < len(severity_parts) - 1:
+                stats_text.append(" | ", style="dim white")
+
+        stats_text.append("\n")
+
+    stats_text.append("🤖 Agents: ", style="bold white")
+    stats_text.append(str(agent_count), style="dim white")
+    stats_text.append(" • ", style="dim white")
+    stats_text.append("🛠️ Tools: ", style="bold white")
+    stats_text.append(str(tool_count), style="dim white")
 
     llm_stats = tracer.get_total_llm_stats()
     total_stats = llm_stats["total"]
 
-    if total_stats["requests"] > 0:
-        llm_stats_text.append("📥 Input Tokens: ", style="bold cyan")
-        llm_stats_text.append(format_token_count(total_stats["input_tokens"]), style="bold white")
+    stats_text.append("\n")
 
-        if total_stats["cached_tokens"] > 0:
-            llm_stats_text.append(" • ", style="dim white")
-            llm_stats_text.append("⚡ Cached: ", style="bold green")
-            llm_stats_text.append(
-                format_token_count(total_stats["cached_tokens"]), style="bold green"
-            )
+    stats_text.append("📥 Input: ", style="bold white")
+    stats_text.append(format_token_count(total_stats["input_tokens"]), style="dim white")
 
-        llm_stats_text.append(" • ", style="dim white")
-        llm_stats_text.append("📤 Output Tokens: ", style="bold cyan")
-        llm_stats_text.append(format_token_count(total_stats["output_tokens"]), style="bold white")
+    stats_text.append(" • ", style="dim white")
+    stats_text.append("⚡ ", style="bold white")
+    stats_text.append("Cached: ", style="bold white")
+    stats_text.append(format_token_count(total_stats["cached_tokens"]), style="dim white")
 
-        if total_stats["cost"] > 0:
-            llm_stats_text.append(" • ", style="dim white")
-            llm_stats_text.append("💰 Total Cost: $", style="bold cyan")
-            llm_stats_text.append(f"{total_stats['cost']:.4f}", style="bold yellow")
+    stats_text.append("\n")
 
-    return llm_stats_text
+    stats_text.append("📤 Output: ", style="bold white")
+    stats_text.append(format_token_count(total_stats["output_tokens"]), style="dim white")
+
+    stats_text.append(" • ", style="dim white")
+    stats_text.append("💰 Cost: ", style="bold white")
+    stats_text.append(f"${total_stats['cost']:.4f}", style="dim white")
+
+    return stats_text
 
 
 # Name generation utilities
-def generate_run_name() -> str:
-    # fmt: off
-    adjectives = [
-        "stealthy", "sneaky", "crafty", "elite", "phantom", "shadow", "silent",
-        "rogue", "covert", "ninja", "ghost", "cyber", "digital", "binary",
-        "encrypted", "obfuscated", "masked", "cloaked", "invisible", "anonymous"
-    ]
-    nouns = [
-        "exploit", "payload", "backdoor", "rootkit", "keylogger", "botnet", "trojan",
-        "worm", "virus", "packet", "buffer", "shell", "daemon", "spider", "crawler",
-        "scanner", "sniffer", "honeypot", "firewall", "breach"
-    ]
-    # fmt: on
-    adj = secrets.choice(adjectives)
-    noun = secrets.choice(nouns)
-    number = secrets.randbelow(900) + 100
-    return f"{adj}-{noun}-{number}"
+
+
+def _slugify_for_run_name(text: str, max_length: int = 32) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    text = text.strip("-")
+    if len(text) > max_length:
+        text = text[:max_length].rstrip("-")
+    return text or "pentest"
+
+
+def _derive_target_label_for_run_name(targets_info: list[dict[str, Any]] | None) -> str:  # noqa: PLR0911
+    if not targets_info:
+        return "pentest"
+
+    first = targets_info[0]
+    target_type = first.get("type")
+    details = first.get("details", {}) or {}
+    original = first.get("original", "") or ""
+
+    if target_type == "web_application":
+        url = details.get("target_url", original)
+        try:
+            parsed = urlparse(url)
+            return str(parsed.netloc or parsed.path or url)
+        except Exception:  # noqa: BLE001
+            return str(url)
+
+    if target_type == "repository":
+        repo = details.get("target_repo", original)
+        parsed = urlparse(repo)
+        path = parsed.path or repo
+        name = path.rstrip("/").split("/")[-1] or path
+        if name.endswith(".git"):
+            name = name[:-4]
+        return str(name)
+
+    if target_type == "local_code":
+        path_str = details.get("target_path", original)
+        try:
+            return str(Path(path_str).name or path_str)
+        except Exception:  # noqa: BLE001
+            return str(path_str)
+
+    if target_type == "ip_address":
+        return str(details.get("target_ip", original) or original)
+
+    return str(original or "pentest")
+
+
+def generate_run_name(targets_info: list[dict[str, Any]] | None = None) -> str:
+    base_label = _derive_target_label_for_run_name(targets_info)
+    slug = _slugify_for_run_name(base_label)
+
+    random_suffix = secrets.token_hex(2)
+
+    return f"{slug}_{random_suffix}"
 
 
 # Target processing utilities
