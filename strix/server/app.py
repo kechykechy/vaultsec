@@ -9,7 +9,7 @@ import logging
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from strix.server.schemas import ScanRequest, ScanStatus
@@ -25,6 +25,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Strix API")
+
+
+@app.get("/")
+async def root():
+    """Redirect root to UI"""
+    return RedirectResponse(url="/ui")
+
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 UI_DIR = BASE_DIR / "ui"
