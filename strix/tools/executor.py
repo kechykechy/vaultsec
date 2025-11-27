@@ -165,10 +165,16 @@ def _update_tracer_with_result(
         raise
 
 
-def _format_tool_result(tool_name: str, result: Any) -> tuple[str, list[dict[str, Any]]]:
+def _format_tool_result_with_screenshot(
+    tool_name: str, result: Any, screenshot_data: str | None
+) -> tuple[str, list[dict[str, Any]]]:
+    """Format tool result with pre-extracted screenshot data.
+    
+    The screenshot_data must be extracted BEFORE any tracer updates,
+    as tracers may mutate the result dict (e.g., replacing base64 with file paths).
+    """
     images: list[dict[str, Any]] = []
 
-    screenshot_data = extract_screenshot_from_result(result)
     if screenshot_data:
         images.append(
             {
@@ -214,6 +220,10 @@ async def _execute_single_tool(
     try:
         result = await execute_tool_invocation(tool_inv, agent_state)
 
+        # Extract screenshot BEFORE tracer updates, as tracer may mutate result dict
+        # (e.g., LiveTracer replaces base64 with file path after saving to disk)
+        screenshot_data = extract_screenshot_from_result(result)
+
         is_error, error_payload = _check_error_result(result)
 
         if (
@@ -234,7 +244,7 @@ async def _execute_single_tool(
             tracer.update_tool_execution(execution_id, "error", error_msg)
         raise
 
-    observation_xml, images = _format_tool_result(tool_name, result)
+    observation_xml, images = _format_tool_result_with_screenshot(tool_name, result, screenshot_data)
     return observation_xml, images, should_agent_finish
 
 

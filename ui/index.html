@@ -75,6 +75,41 @@
         const ToolExecution = ({ tool }) => {
             const [isOpen, setIsOpen] = useState(false);
             
+            // Derive screenshot URL from multiple possible sources
+            const getScreenshotUrl = () => {
+                // Direct screenshot_url (from live updates or loaded data)
+                if (tool.screenshot_url) return tool.screenshot_url;
+                
+                // Check if result contains a local_screenshot_path or screenshot file reference
+                if (typeof tool.result === 'string') {
+                    // Match file:// paths in result
+                    const fileMatch = tool.result.match(/file:\/\/[^'"\s,}]+\.png/);
+                    if (fileMatch) {
+                        // Extract run ID and filename from path like /home/.../agent_runs/scan-xxx/screenshots/exec_N.png
+                        const pathMatch = fileMatch[0].match(/agent_runs\/([^\/]+)\/screenshots\/([^\/]+\.png)/);
+                        if (pathMatch) {
+                            return `/runs/${pathMatch[1]}/screenshots/${pathMatch[2]}`;
+                        }
+                    }
+                }
+                
+                // Check result object for screenshot path
+                if (tool.result && typeof tool.result === 'object' && tool.result.screenshot) {
+                    const screenshot = tool.result.screenshot;
+                    if (screenshot.startsWith('file://')) {
+                        const pathMatch = screenshot.match(/agent_runs\/([^\/]+)\/screenshots\/([^\/]+\.png)/);
+                        if (pathMatch) {
+                            return `/runs/${pathMatch[1]}/screenshots/${pathMatch[2]}`;
+                        }
+                    }
+                }
+                
+                return null;
+            };
+            
+            const screenshotUrl = getScreenshotUrl();
+            const hasScreenshot = !!screenshotUrl;
+            
             return (
                 <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900 overflow-hidden">
                     <div 
@@ -86,7 +121,7 @@
                             <span className={`text-xs ${tool.status === 'error' ? 'text-red-400' : 'text-green-400'}`}>
                                 {tool.status === 'running' ? 'Running...' : tool.status}
                             </span>
-                            {tool.screenshot_url && <span className="text-xs text-blue-400">📷 Screenshot</span>}
+                            {hasScreenshot && <span className="text-xs text-blue-400">📷 Screenshot</span>}
                         </div>
                         <span className="text-slate-500 text-xs">
                             {isOpen ? 'Hide' : 'Show'} Details
@@ -95,10 +130,10 @@
                     
                     {isOpen && (
                         <div className="p-3 border-t border-slate-700 bg-slate-950">
-                            {tool.screenshot_url && (
+                            {hasScreenshot && (
                                 <div className="mb-3">
                                     <span className="text-xs uppercase tracking-wider text-slate-500 mb-1 block">Screenshot</span>
-                                    <img src={tool.screenshot_url} alt="Tool Screenshot" className="rounded border border-slate-700 max-h-64 object-contain" />
+                                    <img src={screenshotUrl} alt="Tool Screenshot" className="rounded border border-slate-700 max-h-96 object-contain cursor-pointer hover:max-h-[600px] transition-all" />
                                 </div>
                             )}
                             <div className="mb-2">
@@ -109,8 +144,8 @@
                             </div>
                             <div>
                                 <span className="text-xs uppercase tracking-wider text-slate-500">Result</span>
-                                <pre className="mono text-xs text-slate-300 mt-1 overflow-x-auto p-2 bg-slate-900 rounded">
-                                    {tool.result}
+                                <pre className="mono text-xs text-slate-300 mt-1 overflow-x-auto p-2 bg-slate-900 rounded max-h-64 overflow-y-auto">
+                                    {typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
                                 </pre>
                             </div>
                         </div>
@@ -426,11 +461,25 @@
 
             // Filter events for the selected agent view
             const visibleEvents = useMemo(() => {
-             if (!selectedAgent) return [];
-             // Logic to show events relevant to selected agent (and maybe its children?)
-             // For simplicity, showing all events for now, or filter by agent_id
-             return events.filter(e => e.agent_id === selectedAgent || !e.agent_id);
-         }, [events, selectedAgent]);
+                if (!selectedAgent) {
+                    // No agent selected - show all events
+                    return events;
+                }
+                
+                // For tool executions, match by agent_id
+                // For chat messages, match by agent_id
+                // Include events that don't have agent_id (global events)
+                return events.filter(e => {
+                    // If event has no agent_id, include it (global/system events)
+                    if (!e.agent_id) return true;
+                    // Match selected agent
+                    if (e.agent_id === selectedAgent) return true;
+                    // Also check if the agent_id in the event matches the selected agent's id field
+                    const selectedAgentData = agents[selectedAgent];
+                    if (selectedAgentData && e.agent_id === selectedAgentData.id) return true;
+                    return false;
+                });
+            }, [events, selectedAgent, agents]);
 
          useEffect(() => {
              if (messagesEndRef.current) {
@@ -541,8 +590,93 @@
                                     <span>START SECURITY SCAN</span>
                                     <i data-lucide="play" className="w-4 h-4"></i>
                                 </button>
+                                
+                                <button 
+                                    onClick={() => {
+                                        setShowMemories(true);
+                                        if (runs.length === 0 && !isLoadingRuns) {
+                                            loadRuns();
+                                        }
+                                    }}
+                                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-3 rounded transition-all mt-2 flex items-center justify-center gap-2 border border-slate-700"
+                                >
+                                    <span>📚 View Past Scans</span>
+                                </button>
                             </div>
                         </div>
+                        
+                        {/* Memories Modal - also available on landing page */}
+                        {showMemories && (
+                            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                                <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+                                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                                        <h3 className="text-sm font-semibold text-white">Past Scans</h3>
+                                        <button
+                                            onClick={() => setShowMemories(false)}
+                                            className="text-xs text-slate-400 hover:text-slate-200"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                        {isLoadingRuns ? (
+                                            <div className="text-sm text-slate-400">Loading memories...</div>
+                                        ) : runs.length === 0 ? (
+                                            <div className="text-sm text-slate-500">
+                                                No saved runs yet. Start a scan to create one.
+                                            </div>
+                                        ) : (
+                                            runs.map((run) => (
+                                                <div
+                                                    key={run.run_id}
+                                                    className="flex items-center justify-between px-3 py-2 rounded-lg border border-slate-800 bg-slate-950 hover:border-slate-700"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-medium text-white truncate">
+                                                            {run.run_name}
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-500">
+                                                            {(run.status || 'unknown').toUpperCase()} • {run.vulnerabilities_count || 0} vulns • {run.agents_count || 0} agents
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-500 truncate">
+                                                            Target: {(run.targets && run.targets[0] && run.targets[0].target) ? run.targets[0].target : 'N/A'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => cloneRun(run.run_id)}
+                                                            className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-50 border border-slate-500"
+                                                        >
+                                                            Use config
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setShowMemories(false);
+                                                                viewRun(run.run_id);
+                                                            }}
+                                                            className="px-2 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
+                                                        >
+                                                            View
+                                                        </button>
+                                                        <button
+                                                            onClick={() => window.open('/api/runs/' + encodeURIComponent(run.run_id) + '/report', '_blank')}
+                                                            className="px-2 py-1 text-xs rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700"
+                                                        >
+                                                            Report
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                        {runsError && (
+                                            <div className="text-xs text-red-400 mt-2">
+                                                {runsError}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             }
