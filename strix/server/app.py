@@ -122,13 +122,44 @@ async def stop_scan():
         except asyncio.CancelledError:
             pass
         
-        # Cleanup
+        # Cleanup tracer
         tracer = get_global_tracer()
+        scan_id = None
         if tracer:
+            scan_id = tracer.run_id
             tracer.cleanup()
+        
+        # Stop and remove Docker sandbox containers
+        await _cleanup_scan_containers(scan_id)
             
         return {"status": "stopped"}
     return {"status": "no_scan_running"}
+
+
+async def _cleanup_scan_containers(scan_id: str | None = None) -> None:
+    """Stop and remove Docker sandbox containers for the scan."""
+    try:
+        import docker
+        client = docker.from_env()
+        
+        # Find containers by label
+        filters = {"label": "strix-scan-id"}
+        if scan_id:
+            filters = {"label": f"strix-scan-id={scan_id}"}
+        
+        containers = client.containers.list(all=True, filters=filters)
+        
+        for container in containers:
+            try:
+                logger.info(f"Stopping scan container: {container.name}")
+                container.stop(timeout=5)
+                container.remove(force=True)
+                logger.info(f"Removed scan container: {container.name}")
+            except Exception as e:
+                logger.warning(f"Failed to stop/remove container {container.name}: {e}")
+                
+    except Exception as e:
+        logger.warning(f"Failed to cleanup scan containers: {e}")
 
 @app.get("/api/scan/status")
 async def get_status():

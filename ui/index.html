@@ -175,6 +175,7 @@
             const [vulns, setVulns] = useState([]);
             const [selectedAgent, setSelectedAgent] = useState(null);
             const [scanStatus, setScanStatus] = useState('idle');
+            const isScanActive = scanStatus === 'running' || scanStatus === 'stopping';
             
             // New Scan Form State
             const [targetUrl, setTargetUrl] = useState('');
@@ -233,6 +234,35 @@
 
                 return () => ws.close();
             }, []);
+
+            useEffect(() => {
+                let intervalId;
+                const pollStatus = async () => {
+                    try {
+                        const res = await fetch('/api/scan/status');
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        const backendStatus = data.status;
+                        if (backendStatus === 'running' && scanStatus !== 'running') {
+                            setScanStatus('running');
+                        }
+                        if (backendStatus === 'idle' && scanStatus !== 'idle') {
+                            setScanStatus('idle');
+                        }
+                    } catch (err) {
+                        console.error('Failed to poll scan status', err);
+                    }
+                };
+
+                if (isScanActive) {
+                    pollStatus();
+                    intervalId = setInterval(pollStatus, 5000);
+                }
+
+                return () => {
+                    if (intervalId) clearInterval(intervalId);
+                };
+            }, [isScanActive, scanStatus]);
 
             const handleWebSocketMessage = (msg) => {
                 const { type, data } = msg;
@@ -459,6 +489,24 @@
                 }
             };
 
+            const stopScan = async () => {
+                if (isScanActive && scanStatus !== 'stopping') {
+                    setScanStatus('stopping');
+                }
+
+                try {
+                    const response = await fetch('/api/scan/stop', {
+                        method: 'POST',
+                    });
+                    if (!response.ok) {
+                        throw new Error('Failed to stop scan');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    setScanStatus('error');
+                }
+            };
+
             // Filter events for the selected agent view
             const visibleEvents = useMemo(() => {
                 if (!selectedAgent) {
@@ -585,7 +633,8 @@
                                 </div>
                                 <button 
                                     onClick={startScan}
-                                    className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded transition-all mt-4 flex items-center justify-center gap-2"
+                                    disabled={isScanActive}
+                                    className={`w-full font-bold py-4 rounded transition-all mt-4 flex items-center justify-center gap-2 ${isScanActive ? 'bg-slate-800 text-slate-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 text-white'}`}
                                 >
                                     <span>START SECURITY SCAN</span>
                                     <i data-lucide="play" className="w-4 h-4"></i>
@@ -742,8 +791,9 @@
                                     Download Report
                                 </button>
                                 <button 
-                                    onClick={() => setScanStatus('idle')}
-                                    className="px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-900/50 rounded text-xs font-medium transition-colors"
+                                    onClick={stopScan}
+                                    disabled={!isScanActive || scanStatus === 'stopping'}
+                                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors border ${isScanActive ? 'bg-red-900/30 hover:bg-red-900/50 text-red-400 border-red-900/50' : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'}`}
                                 >
                                     Stop Scan
                                 </button>
