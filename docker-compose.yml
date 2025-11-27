@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  vaultsec:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: vaultsec-server
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    volumes:
+      - ./strix_runs:/app/strix_runs  # Persist scan results
+    restart: unless-stopped
