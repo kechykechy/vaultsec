@@ -1,5 +1,6 @@
 """SQLite database for VaultSec user management and scan tracking."""
 
+import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -9,8 +10,10 @@ from typing import Any
 
 import bcrypt
 
-# Database path
-DB_PATH = Path(__file__).resolve().parents[2] / "vaultsec.db"
+# Database path - use /app/data in container (mounted volume) or local path
+DB_DIR = Path(os.getenv("VAULTSEC_DB_DIR", str(Path(__file__).resolve().parents[2] / "data")))
+DB_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DB_DIR / "vaultsec.db"
 
 
 def get_db_path() -> Path:

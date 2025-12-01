@@ -12,6 +12,7 @@ services:
     volumes:
       - ./strix_runs:/app/strix_runs  # Persist scan results
       - ./agent_runs:/app/agent_runs  # Persist agent runs
+      - ./data:/app/data  # Persist SQLite database
       - /var/run/docker.sock:/var/run/docker.sock  # Allow container to spawn sandbox containers
     network_mode: host  # Use host network so container can reach sandbox containers
     restart: unless-stopped
