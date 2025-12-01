@@ -4,8 +4,9 @@ from strix.telemetry.tracer import Tracer
 from strix.server.ws_manager import manager
 
 class LiveTracer(Tracer):
-    def __init__(self, run_name: str | None = None):
+    def __init__(self, run_name: str | None = None, user_id: str | None = None):
         super().__init__(run_name)
+        self.user_id = user_id  # Track which user owns this scan
         
     def log_agent_creation(self, agent_id: str, name: str, task: str, parent_id: str | None = None) -> None:
         super().log_agent_creation(agent_id, name, task, parent_id)
@@ -120,11 +121,13 @@ class LiveTracer(Tracer):
         return report_id
 
     def _broadcast_update(self, type: str, data: dict[str, Any]):
-        # We need to run this in the event loop
+        # Send updates only to the user who owns this scan
+        if not self.user_id:
+            return
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                loop.create_task(manager.broadcast({
+                loop.create_task(manager.send_to_user(self.user_id, {
                     "type": type,
                     "data": data
                 }))

@@ -23,7 +23,48 @@
      <script
          type="text/babel"
          data-presets="react">
-        const { useState, useEffect, useRef, useMemo } = React;
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        // --- Auth Helpers ---
+        const TOKEN_KEY = 'vaultsec_token';
+        const USER_KEY = 'vaultsec_user';
+
+        const getStoredAuth = () => {
+            try {
+                const token = localStorage.getItem(TOKEN_KEY);
+                const user = localStorage.getItem(USER_KEY);
+                if (token && user) {
+                    return { token, user: JSON.parse(user) };
+                }
+            } catch (e) {
+                console.error('Failed to parse stored auth', e);
+            }
+            return { token: null, user: null };
+        };
+
+        const storeAuth = (token, user) => {
+            localStorage.setItem(TOKEN_KEY, token);
+            localStorage.setItem(USER_KEY, JSON.stringify(user));
+        };
+
+        const clearAuth = () => {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+        };
+
+        const authFetch = async (url, options = {}) => {
+            const { token } = getStoredAuth();
+            const headers = {
+                ...options.headers,
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            if (options.body && typeof options.body === 'string') {
+                headers['Content-Type'] = 'application/json';
+            }
+            return fetch(url, { ...options, headers });
+        };
 
         // --- Components ---
 
@@ -168,7 +209,170 @@
             </div>
         );
 
-        const Dashboard = () => {
+        // --- Login/Register Component ---
+        const AuthScreen = ({ onLogin }) => {
+            const [isLogin, setIsLogin] = useState(true);
+            const [username, setUsername] = useState('');
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+
+                try {
+                    if (isLogin) {
+                        // Login
+                        const res = await fetch('/api/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password }),
+                        });
+                        if (!res.ok) {
+                            const data = await res.json();
+                            throw new Error(data.detail || 'Login failed');
+                        }
+                        const tokenData = await res.json();
+                        
+                        // Get user info
+                        const userRes = await fetch('/api/auth/me', {
+                            headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+                        });
+                        if (!userRes.ok) throw new Error('Failed to get user info');
+                        const user = await userRes.json();
+                        
+                        storeAuth(tokenData.access_token, user);
+                        onLogin(tokenData.access_token, user);
+                    } else {
+                        // Register
+                        const res = await fetch('/api/auth/register', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, email, password }),
+                        });
+                        if (!res.ok) {
+                            const data = await res.json();
+                            throw new Error(data.detail || 'Registration failed');
+                        }
+                        
+                        // Auto-login after registration
+                        const loginRes = await fetch('/api/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password }),
+                        });
+                        if (!loginRes.ok) throw new Error('Login after registration failed');
+                        const tokenData = await loginRes.json();
+                        
+                        const userRes = await fetch('/api/auth/me', {
+                            headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+                        });
+                        if (!userRes.ok) throw new Error('Failed to get user info');
+                        const user = await userRes.json();
+                        
+                        storeAuth(tokenData.access_token, user);
+                        onLogin(tokenData.access_token, user);
+                    }
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="h-screen flex items-center justify-center bg-slate-950">
+                    <div className="max-w-md w-full p-8 bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl">
+                        <div className="flex justify-center mb-6">
+                            <div className="text-6xl">🦉</div>
+                        </div>
+                        <h1 className="text-3xl font-bold text-center text-white mb-2">Vaultsec</h1>
+                        <p className="text-center text-slate-400 mb-6">Autonomous Security Agent Platform</p>
+                        
+                        <div className="flex mb-6 bg-slate-950 rounded-lg p-1">
+                            <button
+                                onClick={() => setIsLogin(true)}
+                                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${isLogin ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                Login
+                            </button>
+                            <button
+                                onClick={() => setIsLogin(false)}
+                                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${!isLogin ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                Register
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Username</label>
+                                <input
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    placeholder="Enter username"
+                                    required
+                                    className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                />
+                            </div>
+                            
+                            {!isLogin && (
+                                <div>
+                                    <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        placeholder="Enter email"
+                                        required
+                                        className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                    />
+                                </div>
+                            )}
+                            
+                            <div>
+                                <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Password</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Enter password"
+                                    required
+                                    className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                />
+                            </div>
+
+                            {error && (
+                                <div className="text-red-400 text-sm text-center bg-red-900/20 border border-red-900/50 rounded p-2">
+                                    {error}
+                                </div>
+                            )}
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className={`w-full font-bold py-4 rounded transition-all flex items-center justify-center gap-2 ${loading ? 'bg-slate-800 text-slate-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 text-white'}`}
+                            >
+                                {loading ? (
+                                    <React.Fragment>
+                                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                        {isLogin ? 'Logging in...' : 'Creating account...'}
+                                    </React.Fragment>
+                                ) : (
+                                    isLogin ? 'LOGIN' : 'CREATE ACCOUNT'
+                                )}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        const Dashboard = ({ user, onLogout }) => {
             const [isConnected, setIsConnected] = useState(false);
             const [agents, setAgents] = useState({});
             const [events, setEvents] = useState([]);
@@ -221,8 +425,13 @@
             const selectedMode = scanModeOptions.find(option => option.id === scanMode) || scanModeOptions[0];
 
             useEffect(() => {
+                const { token } = getStoredAuth();
+                if (!token) {
+                    console.error('No auth token for WebSocket');
+                    return;
+                }
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.host}/ws`;
+                const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
                 const ws = new WebSocket(wsUrl);
 
                 ws.onopen = () => setIsConnected(true);
@@ -240,7 +449,11 @@
                 let intervalId;
                 const pollStatus = async () => {
                     try {
-                        const res = await fetch('/api/scan/status');
+                        const res = await authFetch('/api/scan/status');
+                        if (res.status === 401) {
+                            onLogout();
+                            return;
+                        }
                         if (!res.ok) return;
                         const data = await res.json();
                         const backendStatus = data.status;
@@ -304,7 +517,11 @@
 
             const cloneRun = async (runId) => {
                 try {
-                    const response = await fetch('/api/runs/' + encodeURIComponent(runId));
+                    const response = await authFetch('/api/runs/' + encodeURIComponent(runId));
+                    if (response.status === 401) {
+                        onLogout();
+                        return;
+                    }
                     if (!response.ok) {
                         throw new Error('Failed to load run');
                     }
@@ -360,7 +577,11 @@
                 setIsLoadingRuns(true);
                 setRunsError(null);
                 try {
-                    const response = await fetch('/api/runs');
+                    const response = await authFetch('/api/runs');
+                    if (response.status === 401) {
+                        onLogout();
+                        return;
+                    }
                     if (!response.ok) {
                         throw new Error('Failed to load memories');
                     }
@@ -376,7 +597,11 @@
 
             const viewRun = async (runId) => {
                 try {
-                    const response = await fetch('/api/runs/' + encodeURIComponent(runId));
+                    const response = await authFetch('/api/runs/' + encodeURIComponent(runId));
+                    if (response.status === 401) {
+                        onLogout();
+                        return;
+                    }
                     if (!response.ok) {
                         throw new Error('Failed to load run');
                     }
@@ -483,9 +708,8 @@
                 setVulns([]);
                 
                 try {
-                    const response = await fetch('/api/scan/start', {
+                    const response = await authFetch('/api/scan/start', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             targets,
                             user_instructions: combinedInstructions,
@@ -493,6 +717,10 @@
                         })
                     });
                     
+                    if (response.status === 401) {
+                        onLogout();
+                        return;
+                    }
                     if (!response.ok) throw new Error('Failed to start scan');
                     
                 } catch (e) {
@@ -507,9 +735,13 @@
                 }
 
                 try {
-                    const response = await fetch('/api/scan/stop', {
+                    const response = await authFetch('/api/scan/stop', {
                         method: 'POST',
                     });
+                    if (response.status === 401) {
+                        onLogout();
+                        return;
+                    }
                     if (!response.ok) {
                         throw new Error('Failed to stop scan');
                     }
@@ -547,197 +779,304 @@
              }
          }, [visibleEvents]);
 
+            // Load runs on mount for the sidebar
+            useEffect(() => {
+                if (runs.length === 0 && !isLoadingRuns) {
+                    loadRuns();
+                }
+            }, []);
+
             if (scanStatus === 'idle') {
                 return (
-                    <div className="h-screen flex items-center justify-center bg-slate-950">
-                        <div className="max-w-md w-full p-8 bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl">
-                            <div className="flex justify-center mb-6">
-                                <div className="text-6xl">🦉</div>
+                    <div className="h-screen flex bg-slate-950">
+                        {/* Left Sidebar - Past Scans */}
+                        <div className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col">
+                            {/* User Header */}
+                            <div className="p-4 border-b border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
+                                        {user && user.username ? user.username.charAt(0).toUpperCase() : '?'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-white truncate">{user && user.username}</div>
+                                        <div className="text-xs text-slate-500 truncate">{user && user.email}</div>
+                                    </div>
+                                    <button
+                                        onClick={onLogout}
+                                        className="p-2 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-colors"
+                                        title="Logout"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
-                            <h1 className="text-3xl font-bold text-center text-white mb-2">Vaultsec</h1>
-                            <p className="text-center text-slate-400 mb-8">Autonomous Security Agent Platform</p>
-                            
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Scan Format</label>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {scanModeOptions.map(option => (
-                                            <button
-                                                type="button"
-                                                key={option.id}
-                                                onClick={() => setScanMode(option.id)}
-                                                className={`w-full text-left p-3 rounded-lg border transition-all ${scanMode === option.id ? 'border-green-500 bg-green-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}
-                                            >
-                                                <div className="font-semibold text-sm text-white">{option.title}</div>
-                                                <div className="text-xs text-slate-400">{option.description}</div>
-                                            </button>
-                                        ))}
+
+                            {/* Past Scans List */}
+                            <div className="flex-1 overflow-y-auto scrollbar-hide">
+                                <div className="p-4">
+                                    <h3 className="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-3 flex items-center gap-2">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        Recent Scans
+                                    </h3>
+                                    
+                                    {isLoadingRuns ? (
+                                        <div className="flex items-center justify-center py-8">
+                                            <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                    ) : runs.length === 0 ? (
+                                        <div className="text-center py-8">
+                                            <div className="text-4xl mb-3">📭</div>
+                                            <div className="text-sm text-slate-500">No scans yet</div>
+                                            <div className="text-xs text-slate-600 mt-1">Start your first security scan</div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {runs.map((run) => (
+                                                <div
+                                                    key={run.run_id}
+                                                    className="p-3 rounded-lg border border-slate-800 bg-slate-950 hover:border-slate-700 transition-colors group"
+                                                >
+                                                    <div className="flex items-start justify-between mb-2">
+                                                        <div className="text-sm font-medium text-white truncate flex-1">
+                                                            {run.run_name}
+                                                        </div>
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold ml-2 ${
+                                                            run.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                                                            run.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                                                            'bg-slate-500/20 text-slate-400'
+                                                        }`}>
+                                                            {run.status || 'unknown'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500 truncate mb-2">
+                                                        {(run.targets && run.targets[0] && run.targets[0].target) ? run.targets[0].target : 'No target'}
+                                                    </div>
+                                                    <div className="flex items-center gap-3 text-[11px] text-slate-600 mb-3">
+                                                        <span className="flex items-center gap-1">
+                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                            </svg>
+                                                            {run.vulnerabilities_count || 0} vulns
+                                                        </span>
+                                                        <span className="flex items-center gap-1">
+                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                                            </svg>
+                                                            {run.agents_count || 0} agents
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => viewRun(run.storage_id || run.run_id)}
+                                                            className="flex-1 px-2 py-1.5 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                                                        >
+                                                            View Details
+                                                        </button>
+                                                        <button
+                                                            onClick={() => window.open('/api/runs/' + encodeURIComponent(run.storage_id || run.run_id) + '/report', '_blank')}
+                                                            className="px-2 py-1.5 text-xs rounded bg-green-600/20 hover:bg-green-600/30 text-green-400 transition-colors"
+                                                        >
+                                                            Report
+                                                        </button>
+                                                        <button
+                                                            onClick={() => cloneRun(run.storage_id || run.run_id)}
+                                                            className="px-2 py-1.5 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-400 transition-colors"
+                                                            title="Use this configuration"
+                                                        >
+                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {runsError && (
+                                        <div className="text-xs text-red-400 mt-2 p-2 bg-red-900/20 rounded">
+                                            {runsError}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Stats Footer */}
+                            <div className="p-4 border-t border-slate-800 bg-slate-950/50">
+                                <div className="grid grid-cols-2 gap-3 text-center">
+                                    <div className="p-2 rounded bg-slate-800/50">
+                                        <div className="text-lg font-bold text-white">{runs.length}</div>
+                                        <div className="text-[10px] text-slate-500 uppercase">Total Scans</div>
+                                    </div>
+                                    <div className="p-2 rounded bg-slate-800/50">
+                                        <div className="text-lg font-bold text-red-400">
+                                            {runs.reduce((acc, r) => acc + (r.vulnerabilities_count || 0), 0)}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 uppercase">Total Vulns</div>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Target URL</label>
-                                    <input 
-                                        type="text" 
-                                        value={targetUrl}
-                                        onChange={(e) => setTargetUrl(e.target.value)}
-                                        placeholder="https://example.com"
-                                        className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
-                                    />
+                            </div>
+                        </div>
+
+                        {/* Main Content - New Scan Form */}
+                        <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+                            <div className="max-w-xl w-full">
+                                {/* Header */}
+                                <div className="text-center mb-8">
+                                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500/20 to-emerald-600/20 border border-green-500/30 mb-4">
+                                        <span className="text-4xl">🦉</span>
+                                    </div>
+                                    <h1 className="text-3xl font-bold text-white mb-2">New Security Scan</h1>
+                                    <p className="text-slate-400">Configure and launch an autonomous security assessment</p>
                                 </div>
 
-                                {scanMode === 'auth' && (
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <div>
-                                            <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Username</label>
-                                            <input
-                                                type="text"
-                                                value={authUsername}
-                                                onChange={(e) => setAuthUsername(e.target.value)}
-                                                placeholder="demo_user"
-                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
-                                            />
+                                {/* Scan Form Card */}
+                                <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 shadow-xl">
+                                    {/* Scan Mode Selection */}
+                                    <div className="mb-6">
+                                        <label className="block text-xs uppercase tracking-wider text-slate-500 mb-3 font-semibold">Assessment Type</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {scanModeOptions.map(option => (
+                                                <button
+                                                    type="button"
+                                                    key={option.id}
+                                                    onClick={() => setScanMode(option.id)}
+                                                    className={`p-4 rounded-xl border-2 transition-all text-center ${
+                                                        scanMode === option.id 
+                                                            ? 'border-green-500 bg-green-500/10' 
+                                                            : 'border-slate-800 bg-slate-950 hover:border-slate-700'
+                                                    }`}
+                                                >
+                                                    <div className="text-2xl mb-2">
+                                                        {option.id === 'web' ? '🌐' : option.id === 'auth' ? '🔐' : '🎯'}
+                                                    </div>
+                                                    <div className="font-semibold text-sm text-white">{option.title}</div>
+                                                    <div className="text-[10px] text-slate-500 mt-1">{option.description}</div>
+                                                </button>
+                                            ))}
                                         </div>
-                                        <div>
-                                            <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Password</label>
-                                            <input
-                                                type="password"
-                                                value={authPassword}
-                                                onChange={(e) => setAuthPassword(e.target.value)}
-                                                placeholder="••••••••"
-                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                    </div>
+
+                                    {/* Target URL */}
+                                    <div className="mb-4">
+                                        <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2 font-semibold">Target URL</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                                                </svg>
+                                            </span>
+                                            <input 
+                                                type="text" 
+                                                value={targetUrl}
+                                                onChange={(e) => setTargetUrl(e.target.value)}
+                                                placeholder="https://example.com"
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-11 pr-4 py-3 text-white focus:border-green-500 outline-none transition-colors"
                                             />
                                         </div>
                                     </div>
-                                )}
 
-                                {scanMode === 'multi' && (
-                                    <div className="space-y-2">
-                                        <label className="block text-xs uppercase tracking-wider text-slate-500">Secondary Target</label>
-                                        <div className="grid grid-cols-1 gap-2">
+                                    {/* Auth Credentials */}
+                                    {scanMode === 'auth' && (
+                                        <div className="mb-4 p-4 rounded-lg bg-slate-950 border border-slate-800">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                                </svg>
+                                                <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Authentication Credentials</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <input
+                                                    type="text"
+                                                    value={authUsername}
+                                                    onChange={(e) => setAuthUsername(e.target.value)}
+                                                    placeholder="Username"
+                                                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 outline-none"
+                                                />
+                                                <input
+                                                    type="password"
+                                                    value={authPassword}
+                                                    onChange={(e) => setAuthPassword(e.target.value)}
+                                                    placeholder="Password"
+                                                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Multi-Target */}
+                                    {scanMode === 'multi' && (
+                                        <div className="mb-4 p-4 rounded-lg bg-slate-950 border border-slate-800">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                                </svg>
+                                                <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Secondary Target</span>
+                                            </div>
                                             <select
                                                 value={secondaryType}
                                                 onChange={(e) => setSecondaryType(e.target.value)}
-                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors text-sm"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 outline-none mb-2"
                                             >
                                                 <option value="repository">Source Repository</option>
-                                                <option value="url">Additional URL or API Host</option>
+                                                <option value="url">Additional URL / API</option>
                                             </select>
                                             <input
                                                 type="text"
                                                 value={secondaryTarget}
                                                 onChange={(e) => setSecondaryTarget(e.target.value)}
                                                 placeholder={secondaryType === 'repository' ? 'https://github.com/org/app' : 'https://api.example.com'}
-                                                className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:border-green-500 outline-none"
                                             />
                                         </div>
-                                    </div>
-                                )}
+                                    )}
 
-                                <div>
-                                    <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2">Instructions (Optional)</label>
-                                    <textarea 
-                                        value={instructions}
-                                        onChange={(e) => setInstructions(e.target.value)}
-                                        placeholder="E.g., Focus on SQL injection..."
-                                        className="w-full bg-slate-950 border border-slate-800 rounded p-3 text-white focus:border-green-500 outline-none transition-colors h-24 resize-none"
-                                    />
-                                    <p className="text-[10px] text-slate-500 mt-1">Preset guidance: {selectedMode.description}. Additional notes will be appended to the default playbook.</p>
+                                    {/* Instructions */}
+                                    <div className="mb-6">
+                                        <label className="block text-xs uppercase tracking-wider text-slate-500 mb-2 font-semibold">Custom Instructions (Optional)</label>
+                                        <textarea 
+                                            value={instructions}
+                                            onChange={(e) => setInstructions(e.target.value)}
+                                            placeholder="E.g., Focus on authentication bypass, check for IDOR vulnerabilities..."
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-green-500 outline-none transition-colors h-20 resize-none text-sm"
+                                        />
+                                    </div>
+
+                                    {/* Start Button */}
+                                    <button 
+                                        onClick={startScan}
+                                        disabled={isScanActive || !targetUrl.trim()}
+                                        className={`w-full font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-3 text-lg ${
+                                            isScanActive || !targetUrl.trim()
+                                                ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
+                                                : 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white shadow-lg shadow-green-500/25'
+                                        }`}
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        Launch Security Scan
+                                    </button>
+
+                                    {/* Preset Info */}
+                                    <div className="mt-4 p-3 rounded-lg bg-slate-950/50 border border-slate-800/50">
+                                        <div className="flex items-start gap-2">
+                                            <svg className="w-4 h-4 text-slate-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <p className="text-xs text-slate-500">
+                                                <span className="text-slate-400 font-medium">Preset: </span>
+                                                {selectedMode.instructions}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <button 
-                                    onClick={startScan}
-                                    disabled={isScanActive}
-                                    className={`w-full font-bold py-4 rounded transition-all mt-4 flex items-center justify-center gap-2 ${isScanActive ? 'bg-slate-800 text-slate-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 text-white'}`}
-                                >
-                                    <span>START SECURITY SCAN</span>
-                                    <i data-lucide="play" className="w-4 h-4"></i>
-                                </button>
-                                
-                                <button 
-                                    onClick={() => {
-                                        setShowMemories(true);
-                                        if (runs.length === 0 && !isLoadingRuns) {
-                                            loadRuns();
-                                        }
-                                    }}
-                                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-3 rounded transition-all mt-2 flex items-center justify-center gap-2 border border-slate-700"
-                                >
-                                    <span>📚 View Past Scans</span>
-                                </button>
                             </div>
                         </div>
-                        
-                        {/* Memories Modal - also available on landing page */}
-                        {showMemories && (
-                            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-                                <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-                                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-                                        <h3 className="text-sm font-semibold text-white">Past Scans</h3>
-                                        <button
-                                            onClick={() => setShowMemories(false)}
-                                            className="text-xs text-slate-400 hover:text-slate-200"
-                                        >
-                                            Close
-                                        </button>
-                                    </div>
-                                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                                        {isLoadingRuns ? (
-                                            <div className="text-sm text-slate-400">Loading memories...</div>
-                                        ) : runs.length === 0 ? (
-                                            <div className="text-sm text-slate-500">
-                                                No saved runs yet. Start a scan to create one.
-                                            </div>
-                                        ) : (
-                                            runs.map((run) => (
-                                                <div
-                                                    key={run.run_id}
-                                                    className="flex items-center justify-between px-3 py-2 rounded-lg border border-slate-800 bg-slate-950 hover:border-slate-700"
-                                                >
-                                                    <div className="min-w-0">
-                                                        <div className="text-sm font-medium text-white truncate">
-                                                            {run.run_name}
-                                                        </div>
-                                                        <div className="text-[11px] text-slate-500">
-                                                            {(run.status || 'unknown').toUpperCase()} • {run.vulnerabilities_count || 0} vulns • {run.agents_count || 0} agents
-                                                        </div>
-                                                        <div className="text-[11px] text-slate-500 truncate">
-                                                            Target: {(run.targets && run.targets[0] && run.targets[0].target) ? run.targets[0].target : 'N/A'}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => cloneRun(run.run_id)}
-                                                            className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-50 border border-slate-500"
-                                                        >
-                                                            Use config
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setShowMemories(false);
-                                                                viewRun(run.run_id);
-                                                            }}
-                                                            className="px-2 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                                                        >
-                                                            View
-                                                        </button>
-                                                        <button
-                                                            onClick={() => window.open('/api/runs/' + encodeURIComponent(run.run_id) + '/report', '_blank')}
-                                                            className="px-2 py-1 text-xs rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700"
-                                                        >
-                                                            Report
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))
-                                        )}
-                                        {runsError && (
-                                            <div className="text-xs text-red-400 mt-2">
-                                                {runsError}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 );
             }
@@ -761,10 +1100,19 @@
                                 />
                             ))}
                         </div>
-                        <div className="p-4 border-t border-slate-800">
-                             <div className="flex items-center gap-2 text-slate-400 text-xs">
+                        <div className="p-4 border-t border-slate-800 space-y-2">
+                            <div className="flex items-center gap-2 text-slate-400 text-xs">
                                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
                                 {isConnected ? 'System Online' : 'Disconnected'}
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-500">{user && user.username}</span>
+                                <button
+                                    onClick={onLogout}
+                                    className="text-slate-500 hover:text-red-400 transition-colors"
+                                >
+                                    Logout
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -938,8 +1286,31 @@
             );
         };
 
+        // --- App Wrapper with Auth ---
+        const App = () => {
+            const [authState, setAuthState] = useState(() => {
+                const stored = getStoredAuth();
+                return { token: stored.token, user: stored.user, isAuthenticated: !!stored.token };
+            });
+
+            const handleLogin = (token, user) => {
+                setAuthState({ token, user, isAuthenticated: true });
+            };
+
+            const handleLogout = () => {
+                clearAuth();
+                setAuthState({ token: null, user: null, isAuthenticated: false });
+            };
+
+            if (!authState.isAuthenticated) {
+                return <AuthScreen onLogin={handleLogin} />;
+            }
+
+            return <Dashboard user={authState.user} onLogout={handleLogout} />;
+        };
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<Dashboard />);
+        root.render(<App />);
         
         // Initialize Icons
         lucide.createIcons();
