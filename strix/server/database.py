@@ -165,6 +165,29 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
     return user
 
 
+def update_user_password(user_id: str, new_password: str) -> bool:
+    """Update a user's password."""
+    hashed = hash_password(new_password)
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?",
+            (hashed, now, user_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def list_all_users() -> list[dict[str, Any]]:
+    """List all users (admin only)."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, email, is_admin, is_active, created_at FROM users ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
 # ============================================================================
 # Scan Operations
 # ============================================================================

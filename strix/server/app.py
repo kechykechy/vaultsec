@@ -26,7 +26,11 @@ from strix.server.database import (
     create_user,
     get_user_by_username,
     get_user_by_email,
+    get_user_by_id,
     authenticate_user,
+    update_user_password,
+    list_all_users,
+    verify_password,
     create_scan,
     update_scan_status,
     get_user_scans,
@@ -188,6 +192,59 @@ async def get_me(current_user: CurrentUser):
         is_admin=bool(current_user.get("is_admin", False)),
         created_at=current_user["created_at"],
     )
+
+
+class PasswordChange(BaseModel):
+    """Password change request."""
+    current_password: str
+    new_password: str
+
+
+class AdminPasswordReset(BaseModel):
+    """Admin password reset request."""
+    user_id: str
+    new_password: str
+
+
+@app.post("/api/auth/change-password")
+async def change_password(request: PasswordChange, current_user: CurrentUser):
+    """Change the current user's password (requires current password)."""
+    # Verify current password
+    if not verify_password(request.current_password, current_user["hashed_password"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    
+    if len(request.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    
+    update_user_password(current_user["id"], request.new_password)
+    return {"message": "Password changed successfully"}
+
+
+@app.post("/api/admin/reset-password")
+async def admin_reset_password(request: AdminPasswordReset, current_user: CurrentUser):
+    """Reset a user's password (admin only, no current password required)."""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    target_user = get_user_by_id(request.user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if len(request.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    
+    update_user_password(request.user_id, request.new_password)
+    return {"message": f"Password reset for user {target_user['username']}"}
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(current_user: CurrentUser):
+    """List all users (admin only)."""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    users = list_all_users()
+    return {"users": users}
 
 
 # ============================================================================
