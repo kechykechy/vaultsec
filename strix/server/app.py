@@ -13,6 +13,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, WebSocket,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from strix.server.schemas import ScanRequest, ScanStatus
 from strix.server.ws_manager import manager
