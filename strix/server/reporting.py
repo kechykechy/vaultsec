@@ -16,6 +16,8 @@ def generate_html_report(run_data: Dict[str, Any], vulnerabilities: List[Dict[st
     low_count = sum(1 for v in vulnerabilities if v['severity'] == 'low')
     
     report_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    findings_open_attr = "open" if len(vulnerabilities) <= 2 else ""
+    audit_log_open_attr = "open" if len(history) <= 2 else ""
     
     html = f"""
 <!DOCTYPE html>
@@ -29,6 +31,82 @@ def generate_html_report(run_data: Dict[str, Any], vulnerabilities: List[Dict[st
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
         body {{ font-family: 'Inter', sans-serif; }}
         .mono {{ font-family: 'JetBrains Mono', monospace; }}
+        details.collapsible-section {{
+            background: #ffffff;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.12), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
+        }}
+        details.collapsible-section summary {{
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            font-weight: 600;
+            font-size: 1.125rem;
+        }}
+        details.collapsible-section summary::-webkit-details-marker {{
+            display: none;
+        }}
+        details.collapsible-section summary .chevron {{
+            transition: transform 0.2s ease;
+            color: #94a3b8;
+        }}
+        details.collapsible-section[open] summary {{
+            border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        }}
+        details.collapsible-section[open] summary .chevron {{
+            transform: rotate(90deg);
+        }}
+        details.collapsible-section .section-body {{
+            padding: 1.5rem;
+        }}
+        details.collapse-card {{
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 0.75rem;
+            background: #fff;
+            box-shadow: 0 5px 8px -4px rgba(15, 23, 42, 0.2);
+        }}
+        details.collapse-card summary {{
+            list-style: none;
+            cursor: pointer;
+            padding: 1rem 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }}
+        details.collapse-card summary::-webkit-details-marker {{
+            display: none;
+        }}
+        details.collapse-card summary .meta {{
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+        }}
+        details.collapse-card .chevron {{
+            margin-left: auto;
+            color: #94a3b8;
+            transition: transform 0.2s ease;
+        }}
+        details.collapse-card[open] .chevron {{
+            transform: rotate(90deg);
+        }}
+        details.collapse-card .collapse-body {{
+            border-top: 1px solid rgba(15, 23, 42, 0.08);
+            padding: 1.25rem;
+        }}
+        .preview-text {{
+            color: #475569;
+            font-size: 0.95rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }}
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -68,55 +146,74 @@ def generate_html_report(run_data: Dict[str, Any], vulnerabilities: List[Dict[st
         
         <!-- Executive Summary -->
         <section class="mb-12">
-            <h2 class="text-2xl font-bold mb-6 border-b pb-2">Executive Summary</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                    <h3 class="text-lg font-semibold mb-4">Risk Overview</h3>
-                    <div class="space-y-3">
-                        <div class="flex items-center justify-between p-3 bg-red-50 rounded border border-red-100">
-                            <span class="font-medium text-red-900">Critical</span>
-                            <span class="font-bold text-red-600 bg-white px-3 py-1 rounded shadow-sm">{critical_count}</span>
+            <details class="collapsible-section" open>
+                <summary>
+                    <span>Executive Summary</span>
+                    <span class="chevron">▶</span>
+                </summary>
+                <div class="section-body">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">Risk Overview</h3>
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between p-3 bg-red-50 rounded border border-red-100">
+                                    <span class="font-medium text-red-900">Critical</span>
+                                    <span class="font-bold text-red-600 bg-white px-3 py-1 rounded shadow-sm">{critical_count}</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 bg-orange-50 rounded border border-orange-100">
+                                    <span class="font-medium text-orange-900">High</span>
+                                    <span class="font-bold text-orange-600 bg-white px-3 py-1 rounded shadow-sm">{high_count}</span>
+                                </div>
+                                 <div class="flex items-center justify-between p-3 bg-yellow-50 rounded border border-yellow-100">
+                                    <span class="font-medium text-yellow-900">Medium</span>
+                                    <span class="font-bold text-yellow-600 bg-white px-3 py-1 rounded shadow-sm">{medium_count}</span>
+                                </div>
+                                 <div class="flex items-center justify-between p-3 bg-blue-50 rounded border border-blue-100">
+                                    <span class="font-medium text-blue-900">Low</span>
+                                    <span class="font-bold text-blue-600 bg-white px-3 py-1 rounded shadow-sm">{low_count}</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex items-center justify-between p-3 bg-orange-50 rounded border border-orange-100">
-                            <span class="font-medium text-orange-900">High</span>
-                            <span class="font-bold text-orange-600 bg-white px-3 py-1 rounded shadow-sm">{high_count}</span>
-                        </div>
-                         <div class="flex items-center justify-between p-3 bg-yellow-50 rounded border border-yellow-100">
-                            <span class="font-medium text-yellow-900">Medium</span>
-                            <span class="font-bold text-yellow-600 bg-white px-3 py-1 rounded shadow-sm">{medium_count}</span>
-                        </div>
-                         <div class="flex items-center justify-between p-3 bg-blue-50 rounded border border-blue-100">
-                            <span class="font-medium text-blue-900">Low</span>
-                            <span class="font-bold text-blue-600 bg-white px-3 py-1 rounded shadow-sm">{low_count}</span>
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">Assessment Scope</h3>
+                            <p class="text-gray-600 mb-4">
+                                This automated security assessment was conducted using VaultSec, an autonomous AI security agent. 
+                                The agent performed a comprehensive scan including reconnaissance, vulnerability scanning, and 
+                                exploitation attempts based on the provided configuration.
+                            </p>
+                            <div class="text-sm text-gray-500">
+                                <strong>Run ID:</strong> {run_data.get('run_id')}
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                    <h3 class="text-lg font-semibold mb-4">Assessment Scope</h3>
-                    <p class="text-gray-600 mb-4">
-                        This automated security assessment was conducted using VaultSec, an autonomous AI security agent. 
-                        The agent performed a comprehensive scan including reconnaissance, vulnerability scanning, and 
-                        exploitation attempts based on the provided configuration.
-                    </p>
-                    <div class="text-sm text-gray-500">
-                        <strong>Run ID:</strong> {run_data.get('run_id')}
-                    </div>
-                </div>
-            </div>
+            </details>
         </section>
 
         <!-- Findings -->
         <section class="mb-12">
-            <h2 class="text-2xl font-bold mb-6 border-b pb-2">Detailed Findings</h2>
-            {_render_findings(vulnerabilities)}
+            <details class="collapsible-section" {findings_open_attr}>
+                <summary>
+                    <span>Detailed Findings ({len(vulnerabilities)})</span>
+                    <span class="chevron">▶</span>
+                </summary>
+                <div class="section-body">
+                    {_render_findings(vulnerabilities)}
+                </div>
+            </details>
         </section>
 
         <!-- Audit Log (Screenshots) -->
         <section>
-            <h2 class="text-2xl font-bold mb-6 border-b pb-2">Evidence & Audit Log</h2>
-            <div class="space-y-6">
-                {_render_audit_log(history)}
-            </div>
+            <details class="collapsible-section" {audit_log_open_attr}>
+                <summary>
+                    <span>Evidence & Audit Log</span>
+                    <span class="chevron">▶</span>
+                </summary>
+                <div class="section-body space-y-6">
+                    {_render_audit_log(history)}
+                </div>
+            </details>
         </section>
 
     </div>
@@ -128,49 +225,83 @@ def generate_html_report(run_data: Dict[str, Any], vulnerabilities: List[Dict[st
 def _render_findings(vulnerabilities):
     if not vulnerabilities:
         return '<div class="p-6 bg-green-50 text-green-800 rounded text-center">No vulnerabilities were identified during this scan.</div>'
-    
-    html = '<div class="space-y-6">'
+
+    severity_colors = {
+        'critical': 'text-red-600 border-red-500',
+        'high': 'text-orange-600 border-orange-500',
+        'medium': 'text-yellow-600 border-yellow-500',
+        'low': 'text-blue-600 border-blue-500',
+        'info': 'text-slate-500 border-slate-400',
+    }
+
+    html = '<div class="space-y-4">'
     for v in vulnerabilities:
-        colors = {
-            'critical': 'border-red-500 bg-red-50',
-            'high': 'border-orange-500 bg-orange-50',
-            'medium': 'border-yellow-500 bg-yellow-50',
-            'low': 'border-blue-500 bg-blue-50'
-        }
-        color_class = colors.get(v['severity'], 'border-gray-500 bg-gray-50')
-        
+        severity = v.get('severity', 'unknown')
+        severity_label = severity.upper()
+        badge_classes = severity_colors.get(severity, 'text-slate-600 border-slate-400')
+        preview = (v.get('content') or '').strip().split('\n')[0][:240]
+        default_open = 'open' if severity in ('critical', 'high') else ''
+
         html += f"""
-        <div class="bg-white rounded-lg shadow-sm border-l-4 {color_class} overflow-hidden">
-            <div class="p-6">
-                <div class="flex justify-between items-start mb-4">
-                    <h3 class="text-xl font-bold text-gray-900">{v['title']}</h3>
-                    <span class="uppercase text-xs font-bold tracking-wider px-2 py-1 rounded bg-white border shadow-sm">{v['severity']}</span>
+        <details class="collapse-card" {default_open}>
+            <summary>
+                <div class="meta">
+                    <span class="text-gray-900 font-semibold text-lg">{v.get('title')}</span>
+                    <span class="uppercase text-xs font-bold tracking-wider px-2 py-1 rounded bg-white border {badge_classes}">{severity_label}</span>
                 </div>
+                <p class="preview-text">{preview or 'No summary available'}</p>
+                <span class="chevron">▶</span>
+            </summary>
+            <div class="collapse-body">
                 <div class="prose max-w-none text-gray-700">
-                    {v['content'].replace(chr(10), '<br>')}
+                    {(v.get('content') or '').replace(chr(10), '<br>')}
                 </div>
                 <div class="mt-4 pt-4 border-t text-xs text-gray-400">
-                    Finding ID: {v['id']}
+                    Finding ID: {v.get('id')}
                 </div>
             </div>
-        </div>
+        </details>
         """
+
     html += '</div>'
     return html
 
+
+def _is_meaningful_screenshot(entry: dict[str, Any]) -> bool:
+    args = entry.get('args') or {}
+    if not isinstance(args, dict):
+        args = {}
+
+    tool_name = (entry.get('tool_name') or '').lower()
+    action = (args.get('action') or args.get('type') or '').lower()
+
+    # Filter out purely navigational screenshots that add little investigative value
+    if tool_name == 'browser_action':
+        trivial_actions = {
+            'scroll_down', 'scroll_up', 'scroll', 'mouse_move', 'hover', 'focus'
+        }
+        if action in trivial_actions:
+            return False
+
+    return True
+
+
 def _render_audit_log(history):
     html = ""
-    # Filter for tools with screenshots
-    tools_with_screens = [h for h in history if h.get('type') == 'tool' and h.get('screenshot_url')]
-    
+    tools_with_screens = [
+        h for h in history
+        if h.get('type') == 'tool'
+        and h.get('screenshot_url')
+        and _is_meaningful_screenshot(h)
+    ]
+
     if not tools_with_screens:
-        return '<div class="text-gray-500 italic">No visual evidence captured.</div>'
+        return '<div class="text-gray-500 italic">No visual exploitation evidence captured.</div>'
 
     for item in tools_with_screens:
-        # Try to embed image as base64 for portability
         img_src = item['screenshot_url']
         local_path = item.get('local_screenshot_path')
-        
+
         if local_path:
             try:
                 path_obj = Path(local_path)
@@ -180,7 +311,7 @@ def _render_audit_log(history):
                         img_src = f"data:image/png;base64,{b64_data}"
             except Exception as e:
                 print(f"Error embedding screenshot: {e}")
-        
+
         html += f"""
         <div class="bg-white p-4 rounded shadow-sm border border-gray-200">
             <div class="flex items-center gap-2 mb-2 text-sm font-mono text-purple-600">
@@ -195,4 +326,5 @@ def _render_audit_log(history):
             </div>
         </div>
         """
+
     return html
